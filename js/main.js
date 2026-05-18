@@ -217,14 +217,14 @@ function renderConclusion(conclusion) {
 // ===== Yahoo Finance Ticker Config =====
 
 const TICKER_FIELDS_INAV = [
-    { key: 'inav', label: 'iNAV Ticker', placeholder: '输入iNAV ticker', defaultValue: '' },
-    { key: 'etf', label: 'ETF Ticker', placeholder: '如 07709.HK', defaultValue: '' },
+    { key: 'inav', label: 'iNAV Ticker（ETF净值数据源）', placeholder: '如有iNAV ticker填入', defaultValue: '' },
+    { key: 'etf', label: 'ETF Ticker（港股市价）', placeholder: '如 07709.HK', defaultValue: '' },
 ];
 
 const TICKER_FIELDS_NO_INAV = [
-    { key: 'hynix', label: '海力士 Ticker', placeholder: '000660.KS', defaultValue: '000660.KS' },
+    { key: 'hynix', label: '海力士股票 Ticker', placeholder: '000660.KS', defaultValue: '000660.KS' },
     { key: 'fx', label: '汇率 Ticker', placeholder: 'KRWHKD=X', defaultValue: 'KRWHKD=X' },
-    { key: 'etf', label: 'ETF Ticker', placeholder: '如 07709.HK', defaultValue: '' },
+    { key: 'etf', label: 'ETF Ticker（港股市价）', placeholder: '如 07709.HK', defaultValue: '' },
 ];
 
 function renderTickerInputs(mode) {

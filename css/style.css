@@ -183,6 +183,58 @@ header h1 {
     border: 1px solid var(--color-border);
 }
 
+/* ===== Baseline Section ===== */
+.baseline-section {
+    margin-bottom: 1.25rem;
+    padding: 1rem 1.25rem;
+    background: #f8fafc;
+    border: 1px dashed var(--color-border);
+    border-radius: 8px;
+}
+
+.baseline-section h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-bottom: 0.75rem;
+}
+
+.baseline-grid {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.baseline-grid .baseline-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 140px;
+}
+
+.baseline-grid .baseline-item label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.baseline-grid .baseline-item input {
+    padding: 0.5rem 0.6rem;
+    border: 1.5px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 0.88rem;
+    background: white;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.baseline-grid .baseline-item input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
 .mode-switch label {
     cursor: pointer;
     font-size: 0.85rem;

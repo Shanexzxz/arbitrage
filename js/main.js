@@ -1,6 +1,6 @@
 // js/main.js
 
-import { renderTable, addRow, deleteLastRow, clearAll, parseData, validateData } from './data-input.js';
+import { renderTable, renderBaseline, addRow, deleteLastRow, clearAll, parseData, validateData } from './data-input.js';
 import { runBacktest } from './backtest-engine.js';
 import { calculateStatistics } from './statistics.js';
 import { renderCharts, destroyCharts } from './charts.js';
@@ -23,15 +23,19 @@ function getParams() {
 
 function init() {
     const container = document.getElementById('data-table-container');
+    const baselineContainer = document.getElementById('baseline-inputs');
     const mode = getCurrentMode();
 
     // Initial render
+    renderBaseline(baselineContainer, mode);
     renderTable(container, mode);
 
     // Mode switch
     document.querySelectorAll('input[name="input-mode"]').forEach(radio => {
         radio.addEventListener('change', () => {
-            renderTable(container, getCurrentMode());
+            const newMode = getCurrentMode();
+            renderBaseline(baselineContainer, newMode);
+            renderTable(container, newMode);
         });
     });
 

@@ -115,6 +115,15 @@
                 <label><input type="radio" name="input-mode" value="inav" checked> 模式A：有 iNAV 数据</label>
                 <label><input type="radio" name="input-mode" value="no-inav"> 模式B：无 iNAV（自行计算）</label>
             </div>
+
+            <!-- Baseline prices (previous close) -->
+            <div id="baseline-container" class="baseline-section">
+                <h3>基准价格（昨收价）</h3>
+                <div id="baseline-inputs" class="baseline-grid"></div>
+            </div>
+
+            <!-- Intraday data table -->
+            <h3 style="margin-top:1.25rem; margin-bottom:0.5rem; font-size:0.9rem;">当日实时数据</h3>
             <div id="data-table-container"></div>
             <div class="table-actions">
                 <button id="add-row-btn" class="btn btn-secondary">+ 添加行</button>

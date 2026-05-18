@@ -868,13 +868,21 @@ header h1 {
     font-size: 0.88rem;
 }
 
-/* ===== Bloomberg Guide ===== */
-.bbg-guide {
-    border-top: 3px solid #1e3a5f;
+/* ===== Appendix (Bloomberg Guide) ===== */
+.appendix {
+    margin-top: 3rem;
+    padding: 1.5rem;
+    border-top: 1px dashed var(--color-border);
+    background: none;
 }
 
-.bbg-guide h2 {
-    color: #1e3a5f;
+.appendix h2 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-bottom: 1.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .bbg-section {

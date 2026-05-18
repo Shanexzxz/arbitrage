@@ -573,11 +573,12 @@ function renderMonitorCharts() {
         etfPrices.push(d.etf);
         officialInav.push(d.inav); // null after 14:30
 
-        // Shadow iNAV = baseInav(USD) × (1 + hynix_change × 2) × usdhkd
+        // Shadow iNAV(HKD) = baseInav(HKD) × (1 + hynix_change × 2) × (1 + usdhkd_change)
+        // baseInav is already HKD; usdhkd change accounts for currency movement
         if (d.hynix && d.usdhkd) {
             const hynixChange = (d.hynix - baseHynix) / baseHynix;
-            const shadowUsd = baseInav * (1 + hynixChange * 2);
-            const shadowHkd = shadowUsd * d.usdhkd;
+            const usdhkdChange = (d.usdhkd - baseUsdhkd) / baseUsdhkd;
+            const shadowHkd = baseInav * (1 + hynixChange * 2) * (1 + usdhkdChange);
             shadowInav.push(parseFloat(shadowHkd.toFixed(4)));
         } else {
             shadowInav.push(null);

@@ -684,8 +684,10 @@ header h1 {
 }
 
 .run-section {
-    text-align: center;
-    margin-bottom: 1.5rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+    text-align: right;
 }
 
 /* ===== Stats Grid ===== */

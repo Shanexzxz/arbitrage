@@ -85,7 +85,8 @@ body {
 .main-content {
     margin-left: 140px;
     padding: 2rem 2.5rem;
-    max-width: 1060px;
+    max-width: none;
+    margin-right: 2rem;
 }
 
 /* ===== Header ===== */

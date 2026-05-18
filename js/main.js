@@ -681,7 +681,15 @@ function renderMonitorCharts() {
         },
         options: {
             responsive: true,
-            plugins: { title: { display: true, text: 'ETF成交价 vs iNAV（含影子iNAV续接）' } },
+            plugins: {
+                title: { display: true, text: 'ETF成交价 vs iNAV（含影子iNAV续接）' },
+                legend: {
+                    labels: {
+                        usePointStyle: true,
+                        pointStyle: 'line',
+                    },
+                },
+            },
             scales: { y: { title: { display: true, text: '价格 (HKD)' } } },
         },
         plugins: [{
@@ -753,17 +761,25 @@ function renderMonitorCharts() {
                 {
                     label: '误差 (%)',
                     data: errorLine,
-                    borderColor: '#dc2626',
-                    borderWidth: 1.5,
-                    pointRadius: 1,
+                    type: 'bar',
+                    backgroundColor: errorLine.map(e => e >= 0 ? 'rgba(220, 38, 38, 0.3)' : 'rgba(37, 99, 235, 0.3)'),
+                    borderColor: errorLine.map(e => e >= 0 ? 'rgba(220, 38, 38, 0.7)' : 'rgba(37, 99, 235, 0.7)'),
+                    borderWidth: 1,
                     yAxisID: 'y1',
-                    fill: false,
                 },
             ],
         },
         options: {
             responsive: true,
-            plugins: { title: { display: true, text: '影子iNAV校验（09:30-14:30 对比官方）' } },
+            plugins: {
+                title: { display: true, text: '影子iNAV校验（09:30-14:30 对比官方）' },
+                legend: {
+                    labels: {
+                        usePointStyle: true,
+                        pointStyle: 'line',
+                    },
+                },
+            },
             scales: {
                 y: { position: 'left', title: { display: true, text: '价格 (HKD)' } },
                 y1: { position: 'right', title: { display: true, text: '误差 (%)' }, grid: { drawOnChartArea: false } },

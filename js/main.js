@@ -124,14 +124,14 @@ function init() {
 
     // === Price Monitor Section ===
     initMonitorTable();
-    document.getElementById('mon-add-row').addEventListener('click', () => { addMonitorRow(); updateShadowColumn(); });
-    document.getElementById('mon-del-row').addEventListener('click', () => { delMonitorRow(); updateShadowColumn(); });
-    document.getElementById('mon-render').addEventListener('click', renderMonitorCharts);
+    document.getElementById('mon-add-row').addEventListener('click', () => { addMonitorRow(); updateShadowColumn(); renderMonitorCharts(); });
+    document.getElementById('mon-del-row').addEventListener('click', () => { delMonitorRow(); updateShadowColumn(); renderMonitorCharts(); });
     document.getElementById('mon-download-tpl').addEventListener('click', downloadMonitorTemplate);
 
-    // Auto-update shadow column on any input change in monitor table
+    // Auto-update shadow column and charts on any input change in monitor table
     document.getElementById('monitor-table').addEventListener('input', () => {
         updateShadowColumn();
+        renderMonitorCharts();
     });
 
     const fileInput = document.getElementById('mon-file-input');
@@ -143,8 +143,9 @@ function init() {
         }
     });
 
-    // Initial shadow calculation for demo data
+    // Initial shadow calculation and chart render for demo data
     updateShadowColumn();
+    renderMonitorCharts();
 }
 
 function executeBacktest() {
@@ -565,6 +566,7 @@ function importMonitorFile(file) {
 
             alert(`已导入 ${dataRows.length} 行数据`);
             updateShadowColumn();
+            renderMonitorCharts();
         } catch (err) {
             alert('文件解析失败: ' + err.message);
         }
@@ -594,7 +596,7 @@ function renderMonitorCharts() {
         }
     }
 
-    if (data.length < 2) { alert('请至少输入两行数据（第一行为基准）'); return; }
+    if (data.length < 2) return;
 
     // Use first row as baseline (opening values)
     const baseRow = data[0];
@@ -602,10 +604,7 @@ function renderMonitorCharts() {
     const baseHynix = baseRow.hynix;
     const baseKrwhkd = baseRow.krwhkd;
 
-    if (!baseInav || !baseHynix || !baseKrwhkd) {
-        alert('第一行（基准）的 iNAV、海力士股价、KRW/HKD 必须填写完整');
-        return;
-    }
+    if (!baseInav || !baseHynix || !baseKrwhkd) return;
 
     // Calculate shadow iNAV for all rows
     const CUTOFF = '14:30';

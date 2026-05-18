@@ -15,23 +15,71 @@ const COLUMNS_NO_INAV = [
 
 const DEFAULT_ROW_COUNT = 5;
 
+// Demo data: simulates a trading session with arbitrage opportunities
+const DEMO_DATA_INAV = [
+    { time: '09:30', inavChange: '0.5', etfChange: '0.6' },
+    { time: '09:35', inavChange: '1.2', etfChange: '1.0' },
+    { time: '09:40', inavChange: '1.8', etfChange: '3.5' },
+    { time: '09:45', inavChange: '2.1', etfChange: '2.3' },
+    { time: '09:50', inavChange: '2.5', etfChange: '2.4' },
+    { time: '09:55', inavChange: '1.9', etfChange: '0.2' },
+    { time: '10:00', inavChange: '2.3', etfChange: '2.2' },
+    { time: '10:05', inavChange: '3.0', etfChange: '4.8' },
+    { time: '10:10', inavChange: '3.2', etfChange: '3.3' },
+    { time: '10:15', inavChange: '2.8', etfChange: '2.9' },
+];
+
+const DEMO_DATA_NO_INAV = [
+    { time: '09:30', hynixChange: '0.3', fxChange: '0.0', etfChange: '0.6' },
+    { time: '09:35', hynixChange: '0.6', fxChange: '-0.1', etfChange: '1.0' },
+    { time: '09:40', hynixChange: '0.9', fxChange: '0.1', etfChange: '3.5' },
+    { time: '09:45', hynixChange: '1.1', fxChange: '0.0', etfChange: '2.3' },
+    { time: '09:50', hynixChange: '1.3', fxChange: '-0.1', etfChange: '2.4' },
+    { time: '09:55', hynixChange: '1.0', fxChange: '0.0', etfChange: '0.2' },
+    { time: '10:00', hynixChange: '1.2', fxChange: '0.1', etfChange: '2.5' },
+    { time: '10:05', hynixChange: '1.5', fxChange: '0.0', etfChange: '4.8' },
+    { time: '10:10', hynixChange: '1.6', fxChange: '0.1', etfChange: '3.3' },
+    { time: '10:15', hynixChange: '1.4', fxChange: '0.0', etfChange: '2.9' },
+];
+
 export function getColumns(mode) {
     return mode === 'inav' ? COLUMNS_INAV : COLUMNS_NO_INAV;
 }
 
+function getDemoData(mode) {
+    return mode === 'inav' ? DEMO_DATA_INAV : DEMO_DATA_NO_INAV;
+}
+
 export function renderTable(container, mode) {
     const columns = getColumns(mode);
+    const demoData = getDemoData(mode);
     const html = `
         <table>
             <thead>
                 <tr>${columns.map(c => `<th>${c.label}</th>`).join('')}</tr>
             </thead>
             <tbody id="data-tbody">
-                ${generateRows(columns, DEFAULT_ROW_COUNT)}
+                ${generateRowsWithData(columns, demoData)}
             </tbody>
         </table>
     `;
     container.innerHTML = html;
+}
+
+function generateRowsWithData(columns, dataRows) {
+    let rows = '';
+    for (const rowData of dataRows) {
+        rows += generateRowWithData(columns, rowData);
+    }
+    return rows;
+}
+
+function generateRowWithData(columns, rowData) {
+    const cells = columns.map(c => {
+        const value = rowData && rowData[c.key] !== undefined ? rowData[c.key] : '';
+        return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="0.01" value="${value}"></td>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
 }
 
 function generateRows(columns, count) {

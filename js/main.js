@@ -127,6 +127,16 @@ function init() {
     document.getElementById('mon-add-row').addEventListener('click', addMonitorRow);
     document.getElementById('mon-del-row').addEventListener('click', delMonitorRow);
     document.getElementById('mon-render').addEventListener('click', renderMonitorCharts);
+    document.getElementById('mon-download-tpl').addEventListener('click', downloadMonitorTemplate);
+
+    const fileInput = document.getElementById('mon-file-input');
+    document.getElementById('mon-import').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            importMonitorFile(e.target.files[0]);
+            e.target.value = '';
+        }
+    });
 }
 
 function executeBacktest() {
@@ -463,6 +473,60 @@ function delMonitorRow() {
     const tbody = document.getElementById('monitor-tbody');
     const rows = tbody.querySelectorAll('tr');
     if (rows.length > 1) rows[rows.length - 1].remove();
+}
+
+function downloadMonitorTemplate() {
+    const header = ['时间', 'iNAV(HKD)', 'ETF成交价(HKD)', '海力士股价(KRW)', 'USD/HKD'];
+    const sampleRows = [
+        ['09:30', '90.50', '90.55', '200500', '7.80'],
+        ['09:45', '90.80', '90.85', '201000', '7.80'],
+        ['10:00', '', '', '', ''],
+        ['14:30', '92.50', '92.45', '202800', '7.80'],
+        ['14:45', '', '92.80', '203200', '7.80'],
+        ['15:00', '', '93.10', '203500', '7.80'],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([header, ...sampleRows]);
+    ws['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '价格数据');
+    XLSX.writeFile(wb, 'price_monitor_template.xlsx');
+}
+
+function importMonitorFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+            // Skip header row
+            const dataRows = rows.slice(1).filter(row => row.length > 0 && row[0]);
+
+            if (dataRows.length === 0) {
+                alert('文件中没有有效数据');
+                return;
+            }
+
+            // Fill table
+            const tbody = document.getElementById('monitor-tbody');
+            tbody.innerHTML = dataRows.map(row => {
+                const time = String(row[0] || '').trim();
+                const inav = row[1] != null && row[1] !== '' ? String(row[1]) : '';
+                const etf = row[2] != null && row[2] !== '' ? String(row[2]) : '';
+                const hynix = row[3] != null && row[3] !== '' ? String(row[3]) : '';
+                const usdhkd = row[4] != null && row[4] !== '' ? String(row[4]) : '';
+                return monitorRow({ time, inav, etf, hynix, usdhkd });
+            }).join('');
+
+            alert(`已导入 ${dataRows.length} 行数据`);
+        } catch (err) {
+            alert('文件解析失败: ' + err.message);
+        }
+    };
+    reader.readAsArrayBuffer(file);
 }
 
 let chartPriceVsInav = null;

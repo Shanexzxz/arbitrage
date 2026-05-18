@@ -6,6 +6,7 @@
     <title>HK ETF Hynix Arbitrage Backtester</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
     <!-- Side Navigation -->
@@ -57,7 +58,10 @@
                 <div class="table-actions">
                     <button id="mon-add-row" class="btn btn-secondary">+ 添加行</button>
                     <button id="mon-del-row" class="btn btn-danger">- 删除末行</button>
+                    <button id="mon-import" class="btn btn-secondary">导入 Excel/CSV</button>
+                    <button id="mon-download-tpl" class="btn btn-secondary">下载模板</button>
                     <button id="mon-render" class="btn btn-primary">生成图表</button>
+                    <input type="file" id="mon-file-input" accept=".csv,.xlsx,.xls" class="hidden">
                 </div>
             </div>
             <div class="monitor-charts">

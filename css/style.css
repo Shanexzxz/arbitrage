@@ -647,6 +647,14 @@ header h1 {
     letter-spacing: 0.04em;
 }
 
+.stat-card .stat-hint {
+    font-size: 0.68rem;
+    color: var(--color-text-muted);
+    margin-top: 0.4rem;
+    line-height: 1.4;
+    opacity: 0.8;
+}
+
 /* ===== Charts ===== */
 .charts-container {
     display: grid;

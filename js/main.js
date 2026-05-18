@@ -158,18 +158,19 @@ function executeBacktest() {
 function renderStatsPanel(stats) {
     const panel = document.getElementById('stats-panel');
     const items = [
-        { label: '总收益率', value: `${stats.totalReturn.toFixed(2)}%` },
-        { label: '最大回撤', value: `${stats.maxDrawdown.toFixed(2)}%` },
-        { label: '胜率', value: `${stats.winRate.toFixed(1)}%` },
-        { label: '盈亏比', value: stats.profitLossRatio.toFixed(2) },
-        { label: '夏普比率', value: stats.sharpeRatio.toFixed(2) },
-        { label: '交易次数', value: stats.totalTrades },
+        { label: '总收益率', value: `${stats.totalReturn.toFixed(2)}%`, hint: '所有交易盈亏之和' },
+        { label: '最大回撤', value: `${stats.maxDrawdown.toFixed(2)}%`, hint: '从累计收益峰值到谷值的最大跌幅' },
+        { label: '胜率', value: `${stats.winRate.toFixed(1)}%`, hint: '盈利交易数 / 总交易数' },
+        { label: '盈亏比', value: stats.profitLossRatio.toFixed(2), hint: '平均盈利 / 平均亏损，>1表示赚多亏少' },
+        { label: '夏普比率', value: stats.sharpeRatio.toFixed(2), hint: '每承担1单位风险获得的超额收益，>1.5为优秀' },
+        { label: '交易次数', value: stats.totalTrades, hint: '回测期间触发的套利交易总数' },
     ];
 
     panel.innerHTML = items.map(item => `
         <div class="stat-card">
             <div class="value">${item.value}</div>
             <div class="label">${item.label}</div>
+            <div class="stat-hint">${item.hint}</div>
         </div>
     `).join('');
 }

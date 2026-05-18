@@ -833,6 +833,12 @@ function renderDivergenceChart(data, threshold) {
             responsive: true,
             plugins: {
                 title: { display: true, text: 'ETF与iNAV偏离走势' },
+                legend: {
+                    labels: {
+                        usePointStyle: true,
+                        pointStyle: 'line',
+                    },
+                },
                 annotation: undefined,
             },
             scales: {

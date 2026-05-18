@@ -4,6 +4,11 @@
     box-sizing: border-box;
 }
 
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 4rem;
+}
+
 :root {
     --color-primary: #2563eb;
     --color-primary-light: #dbeafe;
@@ -29,8 +34,62 @@ body {
     color: var(--color-text);
     line-height: 1.6;
     padding: 2rem 1.5rem;
+    padding-top: 4.5rem;
     max-width: 1200px;
     margin: 0 auto;
+}
+
+/* ===== Navbar ===== */
+.navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--color-border);
+    padding: 0.6rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.nav-brand {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--color-primary-dark);
+    white-space: nowrap;
+}
+
+.nav-links {
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+}
+
+.nav-links a {
+    text-decoration: none;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    padding: 0.35rem 0.7rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    transition: all var(--transition);
+}
+
+.nav-links a:hover {
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.nav-links a.active {
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+    font-weight: 600;
 }
 
 /* ===== Header ===== */

@@ -450,3 +450,30 @@ function updateProviderAvailability(mode) {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// Navbar active link tracking on scroll
+(function() {
+    const navLinks = document.querySelectorAll('.nav-links a');
+    const sections = Array.from(navLinks).map(link => {
+        const id = link.getAttribute('href').slice(1);
+        return document.getElementById(id);
+    }).filter(Boolean);
+
+    function updateActiveLink() {
+        const scrollPos = window.scrollY + 80;
+        let activeIndex = 0;
+
+        for (let i = 0; i < sections.length; i++) {
+            if (sections[i].offsetTop <= scrollPos) {
+                activeIndex = i;
+            }
+        }
+
+        navLinks.forEach((link, i) => {
+            link.classList.toggle('active', i === activeIndex);
+        });
+    }
+
+    window.addEventListener('scroll', updateActiveLink);
+    updateActiveLink();
+})();

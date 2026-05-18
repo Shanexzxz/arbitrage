@@ -269,6 +269,44 @@ header h1 {
     border-radius: 8px;
 }
 
+.source-selector {
+    margin-bottom: 0.75rem;
+}
+
+.source-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.3rem;
+}
+
+.source-selector select {
+    padding: 0.5rem 0.75rem;
+    border: 1.5px solid #bfdbfe;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    background: white;
+    cursor: pointer;
+    min-width: 280px;
+    transition: border-color var(--transition);
+}
+
+.source-selector select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+#token-input-container {
+    margin-bottom: 0.75rem;
+}
+
+#token-input-container .ticker-item input {
+    font-family: 'SF Mono', 'Menlo', monospace;
+}
+
 .ticker-grid {
     display: flex;
     gap: 0.75rem;

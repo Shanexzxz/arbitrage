@@ -80,6 +80,16 @@ function init() {
         handleFetchData();
     });
 
+    // Data source provider switch (Yahoo / Alpha Vantage / etc.)
+    document.getElementById('data-source-provider').addEventListener('change', (e) => {
+        const tokenContainer = document.getElementById('token-input-container');
+        if (e.target.value === 'yahoo') {
+            tokenContainer.classList.add('hidden');
+        } else {
+            tokenContainer.classList.remove('hidden');
+        }
+    });
+
     // Table action buttons
     document.getElementById('add-row-btn').addEventListener('click', () => {
         addRow(getCurrentMode());

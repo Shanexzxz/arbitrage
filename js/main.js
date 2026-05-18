@@ -55,6 +55,7 @@ function init() {
     renderBaseline(baselineContainer, mode);
     renderTable(container, mode);
     toggleDataSource(source);
+    updateHints();
 
     // Data source switch (API vs Manual)
     document.querySelectorAll('input[name="data-source"]').forEach(radio => {
@@ -84,11 +85,11 @@ function init() {
 
     // Data source provider switch (Yahoo / Alpha Vantage / etc.)
     document.getElementById('data-source-provider').addEventListener('change', (e) => {
-        const tokenContainer = document.getElementById('token-input-container');
+        const tokenInput = document.getElementById('api-token');
         if (e.target.value === 'yahoo') {
-            tokenContainer.classList.add('hidden');
+            tokenInput.classList.add('hidden');
         } else {
-            tokenContainer.classList.remove('hidden');
+            tokenInput.classList.remove('hidden');
         }
     });
 
@@ -416,23 +417,22 @@ function updateHints() {
 
 function updateProviderAvailability(mode) {
     const select = document.getElementById('data-source-provider');
+    const tokenInput = document.getElementById('api-token');
     if (!select) return;
 
     const yahooOption = select.querySelector('option[value="yahoo"]');
     if (mode === 'inav') {
         yahooOption.disabled = true;
         yahooOption.textContent = 'Yahoo Finance（不支持 iNAV，请选其他数据源）';
-        // If yahoo is currently selected, switch to first available
+        // If yahoo is currently selected, show token input for alternative
         if (select.value === 'yahoo') {
-            // Try to select another option, or keep it but show warning
-            const tokenContainer = document.getElementById('token-input-container');
-            tokenContainer.classList.remove('hidden');
+            tokenInput.classList.remove('hidden');
         }
     } else {
         yahooOption.disabled = false;
         yahooOption.textContent = 'Yahoo Finance（免费，无需Token）';
         if (select.value === 'yahoo') {
-            document.getElementById('token-input-container').classList.add('hidden');
+            tokenInput.classList.add('hidden');
         }
     }
 }

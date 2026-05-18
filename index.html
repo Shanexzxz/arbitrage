@@ -38,16 +38,13 @@
                 <div id="ticker-config" class="ticker-section">
                     <div class="source-selector">
                         <label class="source-label">数据源</label>
-                        <select id="data-source-provider">
-                            <option value="yahoo" selected>Yahoo Finance（免费，无需Token）</option>
-                            <option value="alphavantage">Alpha Vantage（需要API Key）</option>
-                            <option value="twelvedata">Twelve Data（需要API Key）</option>
-                        </select>
-                    </div>
-                    <div id="token-input-container" class="hidden">
-                        <div class="ticker-item">
-                            <label for="api-token">API Token / Key</label>
-                            <input type="password" id="api-token" placeholder="填入你的API Key">
+                        <div class="source-row">
+                            <select id="data-source-provider">
+                                <option value="yahoo" selected>Yahoo Finance（免费，无需Token）</option>
+                                <option value="alphavantage">Alpha Vantage（需要API Key）</option>
+                                <option value="twelvedata">Twelve Data（需要API Key）</option>
+                            </select>
+                            <input type="password" id="api-token" class="token-input hidden" placeholder="填入 API Key">
                         </div>
                     </div>
                     <div id="ticker-inputs" class="ticker-grid"></div>

@@ -198,6 +198,11 @@ header h1 {
     background: #dbeafe;
 }
 
+#monitor-table input.shadow-filled {
+    background-color: #fff7ed !important;
+    color: #ea580c;
+}
+
 #monitor-table tr:nth-child(even) td {
     background: #fafbfc;
 }

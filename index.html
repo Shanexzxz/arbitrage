@@ -33,23 +33,22 @@
         <section id="price-monitor" class="block">
             <h2>价格监控</h2>
             <div class="monitor-input">
-                <p class="inline-hint" style="margin-bottom:0.75rem;">输入全天数据：iNAV（09:30-14:30由官方发布，14:30后留空）、ETF成交价（09:30-16:10）、海力士股价、USD/HKD汇率。14:30后系统自动用影子iNAV续接。</p>
+                <p class="inline-hint" style="margin-bottom:0.75rem;">iNAV列填入09:30-14:30的官方值，点击「生成图表」后系统自动计算14:30后的影子iNAV并以橙色背景回填到表格中。</p>
                 <div class="monitor-baseline">
                     <span class="baseline-label">昨收基准：</span>
                     <label>iNAV(HKD) <input type="number" id="mon-base-inav" placeholder="如 90.00" step="any"></label>
                     <label>ETF(HKD) <input type="number" id="mon-base-etf" placeholder="如 90.00" step="any"></label>
                     <label>海力士(KRW) <input type="number" id="mon-base-hynix" placeholder="如 200000" step="any"></label>
-                    <label>USD/HKD <input type="number" id="mon-base-usdhkd" placeholder="如 7.80" step="any"></label>
                 </div>
                 <div class="monitor-table-wrap">
                     <table id="monitor-table">
                         <thead>
                             <tr>
                                 <th>时间</th>
-                                <th>iNAV(HKD)<br><span style="font-weight:400;font-size:0.65rem;">14:30后留空</span></th>
+                                <th>iNAV(HKD)<br><span style="font-weight:400;font-size:0.65rem;">14:30后系统自动填入影子值</span></th>
                                 <th>ETF成交价(HKD)</th>
                                 <th>海力士股价(KRW)</th>
-                                <th>USD/HKD</th>
+                                <th>KRW/HKD汇率</th>
                             </tr>
                         </thead>
                         <tbody id="monitor-tbody"></tbody>

@@ -434,20 +434,20 @@ function fillTableWithFetchedData(mode, rows) {
 // ===== Price Monitor Section =====
 
 const MONITOR_DEMO_ROWS = [
-    { time: '09:30', inav: '90.50', etf: '90.55', hynix: '200500', usdhkd: '7.80' },
-    { time: '09:45', inav: '90.80', etf: '90.85', hynix: '201000', usdhkd: '7.80' },
-    { time: '10:00', inav: '91.20', etf: '91.50', hynix: '201500', usdhkd: '7.80' },
-    { time: '10:30', inav: '91.00', etf: '91.10', hynix: '201200', usdhkd: '7.80' },
-    { time: '11:00', inav: '91.50', etf: '91.45', hynix: '201800', usdhkd: '7.80' },
-    { time: '11:30', inav: '91.80', etf: '92.00', hynix: '202000', usdhkd: '7.80' },
-    { time: '13:00', inav: '91.60', etf: '91.70', hynix: '201700', usdhkd: '7.80' },
-    { time: '13:30', inav: '92.00', etf: '91.90', hynix: '202200', usdhkd: '7.80' },
-    { time: '14:00', inav: '92.30', etf: '92.25', hynix: '202500', usdhkd: '7.80' },
-    { time: '14:30', inav: '92.50', etf: '92.45', hynix: '202800', usdhkd: '7.80' },
-    { time: '14:45', inav: '', etf: '92.80', hynix: '203200', usdhkd: '7.80' },
-    { time: '15:00', inav: '', etf: '93.10', hynix: '203500', usdhkd: '7.80' },
-    { time: '15:30', inav: '', etf: '92.60', hynix: '203000', usdhkd: '7.80' },
-    { time: '16:00', inav: '', etf: '92.90', hynix: '203300', usdhkd: '7.81' },
+    { time: '09:30', inav: '90.50', etf: '90.55', hynix: '200500', krwhkd: '0.0058' },
+    { time: '09:45', inav: '90.80', etf: '90.85', hynix: '201000', krwhkd: '0.0058' },
+    { time: '10:00', inav: '91.20', etf: '91.50', hynix: '201500', krwhkd: '0.0058' },
+    { time: '10:30', inav: '91.00', etf: '91.10', hynix: '201200', krwhkd: '0.0058' },
+    { time: '11:00', inav: '91.50', etf: '91.45', hynix: '201800', krwhkd: '0.0058' },
+    { time: '11:30', inav: '91.80', etf: '92.00', hynix: '202000', krwhkd: '0.0058' },
+    { time: '13:00', inav: '91.60', etf: '91.70', hynix: '201700', krwhkd: '0.0058' },
+    { time: '13:30', inav: '92.00', etf: '91.90', hynix: '202200', krwhkd: '0.0058' },
+    { time: '14:00', inav: '92.30', etf: '92.25', hynix: '202500', krwhkd: '0.0058' },
+    { time: '14:30', inav: '92.50', etf: '92.45', hynix: '202800', krwhkd: '0.0058' },
+    { time: '14:45', inav: '', etf: '92.80', hynix: '203200', krwhkd: '0.0058' },
+    { time: '15:00', inav: '', etf: '93.10', hynix: '203500', krwhkd: '0.0058' },
+    { time: '15:30', inav: '', etf: '92.60', hynix: '203000', krwhkd: '0.0058' },
+    { time: '16:00', inav: '', etf: '92.90', hynix: '203300', krwhkd: '0.0058' },
 ];
 
 function initMonitorTable() {
@@ -458,10 +458,10 @@ function initMonitorTable() {
 function monitorRow(data = {}) {
     return `<tr>
         <td><input type="text" placeholder="HH:MM" value="${data.time || ''}"></td>
-        <td><input type="number" step="any" placeholder="14:30后留空" value="${data.inav || ''}"></td>
+        <td><input type="number" step="any" class="inav-cell" placeholder="" value="${data.inav || ''}"></td>
         <td><input type="number" step="any" placeholder="ETF价" value="${data.etf || ''}"></td>
         <td><input type="number" step="any" placeholder="海力士" value="${data.hynix || ''}"></td>
-        <td><input type="number" step="any" placeholder="USD/HKD" value="${data.usdhkd || ''}"></td>
+        <td><input type="number" step="any" placeholder="KRW/HKD" value="${data.krwhkd || ''}"></td>
     </tr>`;
 }
 
@@ -476,14 +476,14 @@ function delMonitorRow() {
 }
 
 function downloadMonitorTemplate() {
-    const header = ['时间', 'iNAV(HKD)', 'ETF成交价(HKD)', '海力士股价(KRW)', 'USD/HKD'];
+    const header = ['时间', 'iNAV(HKD)', 'ETF成交价(HKD)', '海力士股价(KRW)', 'KRW/HKD汇率'];
     const sampleRows = [
-        ['09:30', '90.50', '90.55', '200500', '7.80'],
-        ['09:45', '90.80', '90.85', '201000', '7.80'],
+        ['09:30', '90.50', '90.55', '200500', '0.0058'],
+        ['09:45', '90.80', '90.85', '201000', '0.0058'],
         ['10:00', '', '', '', ''],
-        ['14:30', '92.50', '92.45', '202800', '7.80'],
-        ['14:45', '', '92.80', '203200', '7.80'],
-        ['15:00', '', '93.10', '203500', '7.80'],
+        ['14:30', '92.50', '92.45', '202800', '0.0058'],
+        ['14:45', '', '92.80', '203200', '0.0058'],
+        ['15:00', '', '93.10', '203500', '0.0058'],
     ];
 
     const ws = XLSX.utils.aoa_to_sheet([header, ...sampleRows]);
@@ -536,10 +536,9 @@ function renderMonitorCharts() {
     const baseInav = parseFloat(document.getElementById('mon-base-inav').value);
     const baseEtf = parseFloat(document.getElementById('mon-base-etf').value);
     const baseHynix = parseFloat(document.getElementById('mon-base-hynix').value);
-    const baseUsdhkd = parseFloat(document.getElementById('mon-base-usdhkd').value);
 
-    if (!baseInav || !baseEtf || !baseHynix || !baseUsdhkd) {
-        alert('请先填写昨收基准数据');
+    if (!baseInav || !baseEtf || !baseHynix) {
+        alert('请先填写昨收基准数据（iNAV、ETF、海力士）');
         return;
     }
 
@@ -554,13 +553,16 @@ function renderMonitorCharts() {
         const inav = parseFloat(inputs[1].value) || null;
         const etf = parseFloat(inputs[2].value) || null;
         const hynix = parseFloat(inputs[3].value) || null;
-        const usdhkd = parseFloat(inputs[4].value) || null;
+        const krwhkd = parseFloat(inputs[4].value) || null;
         if (time && (etf || inav || hynix)) {
-            data.push({ time, inav, etf, hynix, usdhkd });
+            data.push({ time, inav, etf, hynix, krwhkd });
         }
     }
 
     if (data.length === 0) { alert('请输入数据'); return; }
+
+    // Use first row's KRW/HKD as baseline for FX change calculation
+    const baseKrwhkd = data.find(d => d.krwhkd)?.krwhkd || 1;
 
     // Calculate shadow iNAV for all rows
     const CUTOFF = '14:30';
@@ -573,15 +575,37 @@ function renderMonitorCharts() {
         etfPrices.push(d.etf);
         officialInav.push(d.inav); // null after 14:30
 
-        // Shadow iNAV(HKD) = baseInav(HKD) × (1 + hynix_change × 2) × (1 + usdhkd_change)
-        // baseInav is already HKD; usdhkd change accounts for currency movement
-        if (d.hynix && d.usdhkd) {
+        // Shadow iNAV(HKD) = baseInav(HKD) × (1 + hynix_change × 2) × (1 + krwhkd_change)
+        // hynix_change captures stock movement, krwhkd_change captures FX impact on HKD pricing
+        if (d.hynix && d.krwhkd) {
             const hynixChange = (d.hynix - baseHynix) / baseHynix;
-            const usdhkdChange = (d.usdhkd - baseUsdhkd) / baseUsdhkd;
-            const shadowHkd = baseInav * (1 + hynixChange * 2) * (1 + usdhkdChange);
+            const fxChange = (d.krwhkd - baseKrwhkd) / baseKrwhkd;
+            const shadowHkd = baseInav * (1 + hynixChange * 2) * (1 + fxChange);
             shadowInav.push(parseFloat(shadowHkd.toFixed(4)));
         } else {
             shadowInav.push(null);
+        }
+    }
+
+    // Fill shadow iNAV back into table cells (14:30 onwards) with orange background
+    const tbodyRows = tbody.querySelectorAll('tr');
+    let dataIdx = 0;
+    for (const row of tbodyRows) {
+        const timeInput = row.querySelectorAll('input')[0];
+        const inavInput = row.querySelectorAll('input')[1];
+        const time = timeInput.value.trim();
+        if (!time) continue;
+
+        // Find matching data entry
+        const match = data[dataIdx];
+        if (match && match.time === time) {
+            if (time > CUTOFF && shadowInav[dataIdx] !== null && !inavInput.value) {
+                inavInput.value = shadowInav[dataIdx].toFixed(2);
+                inavInput.style.backgroundColor = '#fff7ed';
+                inavInput.style.color = '#ea580c';
+                inavInput.title = '影子iNAV（系统计算）';
+            }
+            dataIdx++;
         }
     }
 

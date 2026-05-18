@@ -1,6 +1,9 @@
 // js/yahoo-fetch.js
 
-const PROXY_BASE = 'http://localhost:3001';
+// Same-origin: served by the Node proxy/static server.
+// When opening index.html through that server, this resolves to the same host:port,
+// so it works seamlessly over the LAN.
+const PROXY_BASE = '';
 
 /**
  * Fetch chart data from Yahoo Finance via local proxy.

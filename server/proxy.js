@@ -1,10 +1,16 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 
 const app = express();
-const PORT = 3001;
+const PORT = parseInt(process.env.PORT, 10) || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(cors());
+
+// Serve the static frontend (index.html / css / js) from the project root.
+const projectRoot = path.resolve(__dirname, '..');
+app.use(express.static(projectRoot));
 
 /**
  * Yahoo Finance Chart API proxy.
@@ -40,7 +46,8 @@ app.get('/quote', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Yahoo Finance proxy running at http://localhost:${PORT}`);
-    console.log(`Example: http://localhost:${PORT}/quote?symbol=000660.KS&interval=5m&range=1d`);
+app.listen(PORT, HOST, () => {
+    console.log(`Arbitrage app running at http://${HOST}:${PORT}`);
+    console.log(`Frontend: http://${HOST}:${PORT}/`);
+    console.log(`Proxy example: http://${HOST}:${PORT}/quote?symbol=000660.KS&interval=5m&range=1d`);
 });

@@ -569,18 +569,18 @@ function updateDivergenceIndicator(etf, officialInav, shadowInav, time) {
     const valueClass = divergence > 0.1 ? 'positive' : (divergence < -0.1 ? 'negative' : 'neutral');
 
     container.innerHTML = `
-        <div class="div-card ${signalClass}">
-            <div class="div-value ${valueClass}">${divergence >= 0 ? '+' : ''}${divergence.toFixed(3)}%</div>
-            <div class="div-label">当前偏离度（ETF vs ${inavSource}）</div>
-            <div class="div-action ${actionClass}">${actionText}</div>
+        <div class="div-card">
+            <div class="div-value neutral">${etf.toFixed(2)}</div>
+            <div class="div-label">ETF成交价 (HKD)</div>
         </div>
         <div class="div-card">
             <div class="div-value neutral">${referenceInav.toFixed(2)}</div>
             <div class="div-label">${inavSource} (HKD)</div>
         </div>
-        <div class="div-card">
-            <div class="div-value neutral">${etf.toFixed(2)}</div>
-            <div class="div-label">ETF成交价 (HKD)</div>
+        <div class="div-card ${signalClass}">
+            <div class="div-value ${valueClass}">${divergence >= 0 ? '+' : ''}${divergence.toFixed(3)}%</div>
+            <div class="div-label">偏离度（ETF vs ${inavSource}）</div>
+            <div class="div-action ${actionClass}">${actionText}</div>
         </div>
         <div class="div-card">
             <div class="div-value neutral">${time}</div>

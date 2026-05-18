@@ -121,6 +121,12 @@ function init() {
     document.getElementById('run-backtest-btn').addEventListener('click', () => {
         executeBacktest();
     });
+
+    // === Price Monitor Section ===
+    initMonitorTable();
+    document.getElementById('mon-add-row').addEventListener('click', addMonitorRow);
+    document.getElementById('mon-del-row').addEventListener('click', delMonitorRow);
+    document.getElementById('mon-render').addEventListener('click', renderMonitorCharts);
 }
 
 function executeBacktest() {
@@ -413,6 +419,248 @@ function fillTableWithFetchedData(mode, rows) {
             </tbody>
         </table>
     `;
+}
+
+// ===== Price Monitor Section =====
+
+const MONITOR_DEMO_ROWS = [
+    { time: '09:30', inav: '90.50', etf: '90.55', hynix: '200500', usdhkd: '7.80' },
+    { time: '09:45', inav: '90.80', etf: '90.85', hynix: '201000', usdhkd: '7.80' },
+    { time: '10:00', inav: '91.20', etf: '91.50', hynix: '201500', usdhkd: '7.80' },
+    { time: '10:30', inav: '91.00', etf: '91.10', hynix: '201200', usdhkd: '7.80' },
+    { time: '11:00', inav: '91.50', etf: '91.45', hynix: '201800', usdhkd: '7.80' },
+    { time: '11:30', inav: '91.80', etf: '92.00', hynix: '202000', usdhkd: '7.80' },
+    { time: '13:00', inav: '91.60', etf: '91.70', hynix: '201700', usdhkd: '7.80' },
+    { time: '13:30', inav: '92.00', etf: '91.90', hynix: '202200', usdhkd: '7.80' },
+    { time: '14:00', inav: '92.30', etf: '92.25', hynix: '202500', usdhkd: '7.80' },
+    { time: '14:30', inav: '92.50', etf: '92.45', hynix: '202800', usdhkd: '7.80' },
+    { time: '14:45', inav: '', etf: '92.80', hynix: '203200', usdhkd: '7.80' },
+    { time: '15:00', inav: '', etf: '93.10', hynix: '203500', usdhkd: '7.80' },
+    { time: '15:30', inav: '', etf: '92.60', hynix: '203000', usdhkd: '7.80' },
+    { time: '16:00', inav: '', etf: '92.90', hynix: '203300', usdhkd: '7.81' },
+];
+
+function initMonitorTable() {
+    const tbody = document.getElementById('monitor-tbody');
+    tbody.innerHTML = MONITOR_DEMO_ROWS.map(row => monitorRow(row)).join('');
+}
+
+function monitorRow(data = {}) {
+    return `<tr>
+        <td><input type="text" placeholder="HH:MM" value="${data.time || ''}"></td>
+        <td><input type="number" step="any" placeholder="官方iNAV" value="${data.inav || ''}"></td>
+        <td><input type="number" step="any" placeholder="ETF价" value="${data.etf || ''}"></td>
+        <td><input type="number" step="any" placeholder="海力士" value="${data.hynix || ''}"></td>
+        <td><input type="number" step="any" placeholder="USD/HKD" value="${data.usdhkd || ''}"></td>
+    </tr>`;
+}
+
+function addMonitorRow() {
+    document.getElementById('monitor-tbody').insertAdjacentHTML('beforeend', monitorRow());
+}
+
+function delMonitorRow() {
+    const tbody = document.getElementById('monitor-tbody');
+    const rows = tbody.querySelectorAll('tr');
+    if (rows.length > 1) rows[rows.length - 1].remove();
+}
+
+let chartPriceVsInav = null;
+let chartShadowValidation = null;
+
+function renderMonitorCharts() {
+    const baseInav = parseFloat(document.getElementById('mon-base-inav').value);
+    const baseEtf = parseFloat(document.getElementById('mon-base-etf').value);
+    const baseHynix = parseFloat(document.getElementById('mon-base-hynix').value);
+    const baseUsdhkd = parseFloat(document.getElementById('mon-base-usdhkd').value);
+
+    if (!baseInav || !baseEtf || !baseHynix || !baseUsdhkd) {
+        alert('请先填写昨收基准数据');
+        return;
+    }
+
+    // Parse table data
+    const tbody = document.getElementById('monitor-tbody');
+    const rows = tbody.querySelectorAll('tr');
+    const data = [];
+
+    for (const row of rows) {
+        const inputs = row.querySelectorAll('input');
+        const time = inputs[0].value.trim();
+        const inav = parseFloat(inputs[1].value) || null;
+        const etf = parseFloat(inputs[2].value) || null;
+        const hynix = parseFloat(inputs[3].value) || null;
+        const usdhkd = parseFloat(inputs[4].value) || null;
+        if (time && (etf || inav || hynix)) {
+            data.push({ time, inav, etf, hynix, usdhkd });
+        }
+    }
+
+    if (data.length === 0) { alert('请输入数据'); return; }
+
+    // Calculate shadow iNAV for all rows
+    const CUTOFF = '14:30';
+    const labels = data.map(d => d.time);
+    const officialInav = [];
+    const etfPrices = [];
+    const shadowInav = [];
+
+    for (const d of data) {
+        etfPrices.push(d.etf);
+        officialInav.push(d.inav); // null after 14:30
+
+        // Shadow iNAV = baseInav(USD) × (1 + hynix_change × 2) × usdhkd
+        if (d.hynix && d.usdhkd) {
+            const hynixChange = (d.hynix - baseHynix) / baseHynix;
+            const shadowUsd = baseInav * (1 + hynixChange * 2);
+            const shadowHkd = shadowUsd * d.usdhkd;
+            shadowInav.push(parseFloat(shadowHkd.toFixed(4)));
+        } else {
+            shadowInav.push(null);
+        }
+    }
+
+    // Chart 1: iNAV + Shadow iNAV vs ETF Price (full day)
+    const ctx1 = document.getElementById('chart-price-vs-inav').getContext('2d');
+    if (chartPriceVsInav) chartPriceVsInav.destroy();
+
+    // Build combined iNAV line: official before 14:30, shadow after
+    const combinedInav = data.map((d, i) => {
+        if (d.time <= CUTOFF && officialInav[i] !== null) {
+            return officialInav[i];
+        }
+        return shadowInav[i];
+    });
+
+    // Find cutoff index for annotation
+    const cutoffIdx = data.findIndex(d => d.time > CUTOFF);
+
+    chartPriceVsInav = new Chart(ctx1, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'ETF 成交价 (HKD)',
+                    data: etfPrices,
+                    borderColor: '#2563eb',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    fill: false,
+                },
+                {
+                    label: '官方 iNAV (09:30-14:30)',
+                    data: officialInav,
+                    borderColor: '#16a34a',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    borderDash: [],
+                    fill: false,
+                    spanGaps: false,
+                },
+                {
+                    label: '影子 iNAV (14:30后)',
+                    data: data.map((d, i) => d.time > CUTOFF ? shadowInav[i] : null),
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    borderDash: [5, 3],
+                    fill: false,
+                    spanGaps: false,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            plugins: { title: { display: true, text: 'ETF成交价 vs iNAV（含影子iNAV续接）' } },
+            scales: { y: { title: { display: true, text: '价格 (HKD)' } } },
+        },
+        plugins: [{
+            id: 'cutoffLine',
+            afterDraw(chart) {
+                if (cutoffIdx <= 0) return;
+                const { ctx, chartArea, scales } = chart;
+                const xPos = scales.x.getPixelForValue(cutoffIdx);
+                ctx.save();
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = '#dc2626';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(xPos, chartArea.top);
+                ctx.lineTo(xPos, chartArea.bottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#dc2626';
+                ctx.font = '11px sans-serif';
+                ctx.fillText('14:30 iNAV停更', xPos + 4, chartArea.top + 14);
+                ctx.restore();
+            }
+        }],
+    });
+
+    // Chart 2: Shadow iNAV vs Official iNAV (09:30-14:30 only, validation)
+    const ctx2 = document.getElementById('chart-shadow-validation').getContext('2d');
+    if (chartShadowValidation) chartShadowValidation.destroy();
+
+    // Filter only rows where both official and shadow exist (before 14:30)
+    const validationLabels = [];
+    const officialLine = [];
+    const shadowLine = [];
+    const errorLine = [];
+
+    for (let i = 0; i < data.length; i++) {
+        if (data[i].time <= CUTOFF && officialInav[i] !== null && shadowInav[i] !== null) {
+            validationLabels.push(data[i].time);
+            officialLine.push(officialInav[i]);
+            shadowLine.push(shadowInav[i]);
+            errorLine.push(((shadowInav[i] - officialInav[i]) / officialInav[i] * 100));
+        }
+    }
+
+    chartShadowValidation = new Chart(ctx2, {
+        type: 'line',
+        data: {
+            labels: validationLabels,
+            datasets: [
+                {
+                    label: '官方 iNAV (HKD)',
+                    data: officialLine,
+                    borderColor: '#16a34a',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    yAxisID: 'y',
+                    fill: false,
+                },
+                {
+                    label: '影子 iNAV (HKD)',
+                    data: shadowLine,
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    borderDash: [5, 3],
+                    yAxisID: 'y',
+                    fill: false,
+                },
+                {
+                    label: '误差 (%)',
+                    data: errorLine,
+                    borderColor: '#dc2626',
+                    borderWidth: 1.5,
+                    pointRadius: 1,
+                    yAxisID: 'y1',
+                    fill: false,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            plugins: { title: { display: true, text: '影子iNAV校验（09:30-14:30 对比官方）' } },
+            scales: {
+                y: { position: 'left', title: { display: true, text: '价格 (HKD)' } },
+                y1: { position: 'right', title: { display: true, text: '误差 (%)' }, grid: { drawOnChartArea: false } },
+            },
+        },
+    });
 }
 
 // ===== Dashboard Rendering =====

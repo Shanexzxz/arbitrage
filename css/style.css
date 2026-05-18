@@ -113,6 +113,101 @@ header h1 {
     font-weight: 400;
 }
 
+/* ===== Price Monitor Section ===== */
+.monitor-input {
+    margin-bottom: 1.5rem;
+}
+
+.monitor-baseline {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: #f8fafc;
+    border: 1px dashed var(--color-border);
+    border-radius: 8px;
+}
+
+.monitor-baseline .baseline-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+.monitor-baseline label {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.monitor-baseline input {
+    padding: 0.4rem 0.5rem;
+    border: 1.5px solid var(--color-border);
+    border-radius: 5px;
+    font-size: 0.82rem;
+    width: 100px;
+}
+
+.monitor-table-wrap {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+}
+
+#monitor-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+#monitor-table th {
+    background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
+    padding: 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-align: center;
+    position: sticky;
+    top: 0;
+    border-bottom: 2px solid var(--color-border);
+}
+
+#monitor-table td {
+    padding: 0;
+    border-bottom: 1px solid #f1f5f9;
+    text-align: center;
+}
+
+#monitor-table input {
+    width: 100%;
+    border: none;
+    text-align: center;
+    padding: 0.4rem;
+    font-size: 0.82rem;
+    background: transparent;
+}
+
+#monitor-table input:focus {
+    outline: none;
+    background: #dbeafe;
+}
+
+#monitor-table tr:nth-child(even) td {
+    background: #fafbfc;
+}
+
+.monitor-charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+}
+
 /* ===== Blocks / Cards ===== */
 .block {
     background: var(--color-card);

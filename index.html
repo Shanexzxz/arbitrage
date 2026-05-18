@@ -12,6 +12,7 @@
     <nav class="sidebar">
         <div class="nav-brand">ETF 套利回测</div>
         <div class="nav-links">
+            <a href="#price-monitor">价格监控</a>
             <a href="#indicator-guide">指标说明</a>
             <a href="#data-input">数据输入</a>
             <a href="#strategy-params">策略参数</a>
@@ -26,6 +27,44 @@
     </header>
 
     <main>
+
+        <!-- Top Charts: Price Tracking & Shadow iNAV Validation -->
+        <section id="price-monitor" class="block">
+            <h2>价格监控</h2>
+            <div class="monitor-input">
+                <p class="inline-hint" style="margin-bottom:0.75rem;">输入全天数据：官方iNAV（09:30-14:30）、ETF成交价（09:30-16:10）、海力士股价、USD/HKD汇率。系统将在14:30后用影子iNAV接续。</p>
+                <div class="monitor-baseline">
+                    <span class="baseline-label">昨收基准：</span>
+                    <label>iNAV(USD) <input type="number" id="mon-base-inav" placeholder="如 45.00" step="any"></label>
+                    <label>ETF(HKD) <input type="number" id="mon-base-etf" placeholder="如 90.00" step="any"></label>
+                    <label>海力士(KRW) <input type="number" id="mon-base-hynix" placeholder="如 200000" step="any"></label>
+                    <label>USD/HKD <input type="number" id="mon-base-usdhkd" placeholder="如 7.80" step="any"></label>
+                </div>
+                <div class="monitor-table-wrap">
+                    <table id="monitor-table">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>官方iNAV(HKD)</th>
+                                <th>ETF成交价(HKD)</th>
+                                <th>海力士股价(KRW)</th>
+                                <th>USD/HKD</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monitor-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="table-actions">
+                    <button id="mon-add-row" class="btn btn-secondary">+ 添加行</button>
+                    <button id="mon-del-row" class="btn btn-danger">- 删除末行</button>
+                    <button id="mon-render" class="btn btn-primary">生成图表</button>
+                </div>
+            </div>
+            <div class="monitor-charts">
+                <div class="chart-wrapper"><canvas id="chart-price-vs-inav"></canvas></div>
+                <div class="chart-wrapper"><canvas id="chart-shadow-validation"></canvas></div>
+            </div>
+        </section>
 
         <!-- Block 1: Indicator Guide -->
         <section id="indicator-guide" class="block">

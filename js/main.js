@@ -5,6 +5,7 @@ import { runBacktest } from './backtest-engine.js';
 import { calculateStatistics } from './statistics.js';
 import { renderCharts, destroyCharts } from './charts.js';
 import { generateConclusion } from './conclusion.js';
+import { fetchAllData } from './yahoo-fetch.js';
 
 function getCurrentMode() {
     const checked = document.querySelector('input[name="input-mode"]:checked');
@@ -27,6 +28,7 @@ function init() {
     const mode = getCurrentMode();
 
     // Initial render
+    renderTickerInputs(mode);
     renderBaseline(baselineContainer, mode);
     renderTable(container, mode);
 
@@ -34,9 +36,16 @@ function init() {
     document.querySelectorAll('input[name="input-mode"]').forEach(radio => {
         radio.addEventListener('change', () => {
             const newMode = getCurrentMode();
+            renderTickerInputs(newMode);
             renderBaseline(baselineContainer, newMode);
             renderTable(container, newMode);
+            setFetchStatus('');
         });
+    });
+
+    // Fetch data button
+    document.getElementById('fetch-data-btn').addEventListener('click', () => {
+        handleFetchData();
     });
 
     // Table action buttons
@@ -202,6 +211,130 @@ function renderConclusion(conclusion) {
 
         <h3>优化建议</h3>
         <p>${conclusion.suggestion}</p>
+    `;
+}
+
+// ===== Yahoo Finance Ticker Config =====
+
+const TICKER_FIELDS_INAV = [
+    { key: 'inav', label: 'iNAV Ticker', placeholder: '输入iNAV ticker', defaultValue: '' },
+    { key: 'etf', label: 'ETF Ticker', placeholder: '如 07709.HK', defaultValue: '' },
+];
+
+const TICKER_FIELDS_NO_INAV = [
+    { key: 'hynix', label: '海力士 Ticker', placeholder: '000660.KS', defaultValue: '000660.KS' },
+    { key: 'fx', label: '汇率 Ticker', placeholder: 'KRWHKD=X', defaultValue: 'KRWHKD=X' },
+    { key: 'etf', label: 'ETF Ticker', placeholder: '如 07709.HK', defaultValue: '' },
+];
+
+function renderTickerInputs(mode) {
+    const container = document.getElementById('ticker-inputs');
+    const fields = mode === 'inav' ? TICKER_FIELDS_INAV : TICKER_FIELDS_NO_INAV;
+
+    container.innerHTML = fields.map(f => `
+        <div class="ticker-item">
+            <label for="ticker-${f.key}">${f.label}</label>
+            <input type="text" id="ticker-${f.key}" placeholder="${f.placeholder}" value="${f.defaultValue}">
+        </div>
+    `).join('');
+}
+
+function getTickerValues(mode) {
+    const fields = mode === 'inav' ? TICKER_FIELDS_INAV : TICKER_FIELDS_NO_INAV;
+    const tickers = {};
+    for (const f of fields) {
+        const input = document.getElementById(`ticker-${f.key}`);
+        tickers[f.key] = input ? input.value.trim() : '';
+    }
+    return tickers;
+}
+
+function setFetchStatus(text, type = '') {
+    const el = document.getElementById('fetch-status');
+    el.textContent = text;
+    el.className = 'fetch-status ' + type;
+}
+
+async function handleFetchData() {
+    const mode = getCurrentMode();
+    const tickers = getTickerValues(mode);
+
+    // Validate tickers
+    const emptyFields = Object.entries(tickers).filter(([, v]) => !v);
+    if (emptyFields.length > 0) {
+        setFetchStatus('请填写所有 Ticker', 'error');
+        return;
+    }
+
+    setFetchStatus('正在获取数据...', 'loading');
+
+    try {
+        const { baseline, rows } = await fetchAllData(tickers, mode);
+
+        // Fill baseline inputs
+        const baselineContainer = document.getElementById('baseline-inputs');
+        for (const [key, value] of Object.entries(baseline)) {
+            const input = document.getElementById(key);
+            if (input && value != null) {
+                input.value = value;
+            }
+        }
+
+        // Fill table with fetched rows
+        fillTableWithFetchedData(mode, rows);
+
+        setFetchStatus(`已获取 ${rows.length} 条数据`, 'success');
+    } catch (error) {
+        setFetchStatus(`获取失败: ${error.message}`, 'error');
+        console.error('Fetch error:', error);
+    }
+}
+
+function fillTableWithFetchedData(mode, rows) {
+    const container = document.getElementById('data-table-container');
+    const columns = mode === 'inav'
+        ? [{ key: 'time' }, { key: 'inavPrice' }, { key: 'etfPrice' }]
+        : [{ key: 'time' }, { key: 'hynixPrice' }, { key: 'fxPrice' }, { key: 'etfPrice' }];
+
+    // Map fxPrice to fxRate for table compatibility
+    const mappedRows = rows.map(row => ({
+        ...row,
+        fxRate: row.fxPrice || row.fxRate,
+    }));
+
+    // Rebuild table with fetched data
+    const { getColumns } = { getColumns: (m) => m === 'inav'
+        ? [
+            { key: 'time', label: '时间', type: 'text', placeholder: 'e.g. 09:30' },
+            { key: 'inavPrice', label: 'iNAV', type: 'number', placeholder: '10.12' },
+            { key: 'etfPrice', label: 'ETF市价', type: 'number', placeholder: '10.15' },
+          ]
+        : [
+            { key: 'time', label: '时间', type: 'text', placeholder: 'e.g. 09:30' },
+            { key: 'hynixPrice', label: '海力士股价', type: 'number', placeholder: '201000' },
+            { key: 'fxRate', label: 'KRW/HKD汇率', type: 'number', placeholder: '0.00600' },
+            { key: 'etfPrice', label: 'ETF市价', type: 'number', placeholder: '10.15' },
+          ]
+    };
+
+    const cols = getColumns(mode);
+    const tableRows = mappedRows.map(row => {
+        const cells = cols.map(c => {
+            const val = row[c.key] !== undefined ? row[c.key] : '';
+            return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${val}"></td>`;
+        }).join('');
+        return `<tr>${cells}</tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <table>
+            <thead>
+                <tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr>
+            </thead>
+            <tbody id="data-tbody">
+                ${tableRows}
+            </tbody>
+        </table>
     `;
 }
 

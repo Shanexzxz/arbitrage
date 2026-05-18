@@ -116,6 +116,18 @@
                 <label><input type="radio" name="input-mode" value="no-inav"> 模式B：无 iNAV（自行计算）</label>
             </div>
 
+            <!-- Yahoo Finance auto-fetch -->
+            <div id="ticker-config" class="ticker-section">
+                <div id="ticker-inputs" class="ticker-grid"></div>
+                <div class="ticker-actions">
+                    <button id="fetch-data-btn" class="btn btn-primary">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"/></svg>
+                        从 Yahoo Finance 获取数据
+                    </button>
+                    <span id="fetch-status" class="fetch-status"></span>
+                </div>
+            </div>
+
             <!-- Baseline prices (previous close) -->
             <div id="baseline-container" class="baseline-section">
                 <h3>基准价格（昨收价）</h3>

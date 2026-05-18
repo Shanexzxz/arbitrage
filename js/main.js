@@ -124,10 +124,15 @@ function init() {
 
     // === Price Monitor Section ===
     initMonitorTable();
-    document.getElementById('mon-add-row').addEventListener('click', addMonitorRow);
-    document.getElementById('mon-del-row').addEventListener('click', delMonitorRow);
+    document.getElementById('mon-add-row').addEventListener('click', () => { addMonitorRow(); updateShadowColumn(); });
+    document.getElementById('mon-del-row').addEventListener('click', () => { delMonitorRow(); updateShadowColumn(); });
     document.getElementById('mon-render').addEventListener('click', renderMonitorCharts);
     document.getElementById('mon-download-tpl').addEventListener('click', downloadMonitorTemplate);
+
+    // Auto-update shadow column on any input change in monitor table
+    document.getElementById('monitor-table').addEventListener('input', () => {
+        updateShadowColumn();
+    });
 
     const fileInput = document.getElementById('mon-file-input');
     document.getElementById('mon-import').addEventListener('click', () => fileInput.click());
@@ -137,6 +142,9 @@ function init() {
             e.target.value = '';
         }
     });
+
+    // Initial shadow calculation for demo data
+    updateShadowColumn();
 }
 
 function executeBacktest() {
@@ -476,6 +484,38 @@ function delMonitorRow() {
     if (rows.length > 1) rows[rows.length - 1].remove();
 }
 
+/**
+ * Recalculate shadow iNAV for all rows based on first row as baseline.
+ * Called on every input change — no button needed.
+ */
+function updateShadowColumn() {
+    const tbody = document.getElementById('monitor-tbody');
+    const rows = tbody.querySelectorAll('tr');
+    if (rows.length < 1) return;
+
+    // Read first row as baseline
+    const firstInputs = rows[0].querySelectorAll('input');
+    const baseInav = parseFloat(firstInputs[1].value) || null;
+    const baseHynix = parseFloat(firstInputs[4].value) || null;
+    const baseKrwhkd = parseFloat(firstInputs[5].value) || null;
+
+    for (const row of rows) {
+        const inputs = row.querySelectorAll('input');
+        const shadowCell = inputs[2];
+        const hynix = parseFloat(inputs[4].value) || null;
+        const krwhkd = parseFloat(inputs[5].value) || null;
+
+        if (baseInav && baseHynix && baseKrwhkd && hynix && krwhkd) {
+            const hynixChange = (hynix - baseHynix) / baseHynix;
+            const fxChange = (krwhkd - baseKrwhkd) / baseKrwhkd;
+            const shadow = baseInav * (1 + hynixChange * 2) * (1 + fxChange);
+            shadowCell.value = shadow.toFixed(2);
+        } else {
+            shadowCell.value = '';
+        }
+    }
+}
+
 function downloadMonitorTemplate() {
     const header = ['时间', 'iNAV(HKD)', '影子iNAV(系统计算)', 'ETF成交价(HKD)', '海力士股价(KRW)', 'KRW/HKD汇率'];
     const sampleRows = [
@@ -524,6 +564,7 @@ function importMonitorFile(file) {
             }).join('');
 
             alert(`已导入 ${dataRows.length} 行数据`);
+            updateShadowColumn();
         } catch (err) {
             alert('文件解析失败: ' + err.message);
         }
@@ -586,24 +627,6 @@ function renderMonitorCharts() {
             shadowInav.push(parseFloat(shadowHkd.toFixed(4)));
         } else {
             shadowInav.push(null);
-        }
-    }
-
-    // Fill shadow iNAV into the shadow column for all rows
-    const tbodyRows = tbody.querySelectorAll('tr');
-    let dataIdx = 0;
-    for (const row of tbodyRows) {
-        const inputs = row.querySelectorAll('input');
-        const time = inputs[0].value.trim();
-        if (!time) continue;
-
-        const match = data[dataIdx];
-        if (match && match.time === time) {
-            const shadowCell = inputs[2]; // shadow column
-            if (shadowInav[dataIdx] !== null) {
-                shadowCell.value = shadowInav[dataIdx].toFixed(2);
-            }
-            dataIdx++;
         }
     }
 

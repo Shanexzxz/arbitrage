@@ -12,6 +12,28 @@ function getCurrentMode() {
     return checked ? checked.value : 'inav';
 }
 
+function getCurrentDataSource() {
+    const checked = document.querySelector('input[name="data-source"]:checked');
+    return checked ? checked.value : 'api';
+}
+
+function toggleDataSource(source) {
+    const apiSection = document.getElementById('api-section');
+    const manualSection = document.getElementById('manual-section');
+    const tableSection = document.getElementById('data-table-section');
+
+    if (source === 'api') {
+        apiSection.classList.remove('hidden');
+        manualSection.classList.add('hidden');
+        // Hide table until data is fetched
+        tableSection.classList.add('hidden');
+    } else {
+        apiSection.classList.add('hidden');
+        manualSection.classList.remove('hidden');
+        tableSection.classList.remove('hidden');
+    }
+}
+
 function getParams() {
     return {
         openThreshold: parseFloat(document.getElementById('open-threshold').value) || 1.5,
@@ -26,13 +48,23 @@ function init() {
     const container = document.getElementById('data-table-container');
     const baselineContainer = document.getElementById('baseline-inputs');
     const mode = getCurrentMode();
+    const source = getCurrentDataSource();
 
     // Initial render
     renderTickerInputs(mode);
     renderBaseline(baselineContainer, mode);
     renderTable(container, mode);
+    toggleDataSource(source);
 
-    // Mode switch
+    // Data source switch (API vs Manual)
+    document.querySelectorAll('input[name="data-source"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            toggleDataSource(getCurrentDataSource());
+            setFetchStatus('');
+        });
+    });
+
+    // Calculation mode switch
     document.querySelectorAll('input[name="input-mode"]').forEach(radio => {
         radio.addEventListener('change', () => {
             const newMode = getCurrentMode();
@@ -217,14 +249,14 @@ function renderConclusion(conclusion) {
 // ===== Yahoo Finance Ticker Config =====
 
 const TICKER_FIELDS_INAV = [
-    { key: 'inav', label: 'iNAV Ticker（ETF净值数据源）', placeholder: '如有iNAV ticker填入', defaultValue: '' },
-    { key: 'etf', label: 'ETF Ticker（港股市价）', placeholder: '如 07709.HK', defaultValue: '' },
+    { key: 'etf', label: 'ETF代码（港股）', placeholder: '如 07709.HK', defaultValue: '' },
+    { key: 'hynix', label: '海力士股票代码', placeholder: '000660.KS', defaultValue: '000660.KS' },
 ];
 
 const TICKER_FIELDS_NO_INAV = [
-    { key: 'hynix', label: '海力士股票 Ticker', placeholder: '000660.KS', defaultValue: '000660.KS' },
-    { key: 'fx', label: '汇率 Ticker', placeholder: 'KRWHKD=X', defaultValue: 'KRWHKD=X' },
-    { key: 'etf', label: 'ETF Ticker（港股市价）', placeholder: '如 07709.HK', defaultValue: '' },
+    { key: 'etf', label: 'ETF代码（港股）', placeholder: '如 07709.HK', defaultValue: '' },
+    { key: 'hynix', label: '海力士股票代码', placeholder: '000660.KS', defaultValue: '000660.KS' },
+    { key: 'fx', label: '汇率', placeholder: 'KRWHKD=X', defaultValue: 'KRWHKD=X' },
 ];
 
 function renderTickerInputs(mode) {
@@ -260,19 +292,28 @@ async function handleFetchData() {
     const tickers = getTickerValues(mode);
 
     // Validate tickers
-    const emptyFields = Object.entries(tickers).filter(([, v]) => !v);
+    const requiredKeys = mode === 'inav' ? ['etf', 'hynix'] : ['etf', 'hynix', 'fx'];
+    const emptyFields = requiredKeys.filter(k => !tickers[k]);
     if (emptyFields.length > 0) {
-        setFetchStatus('请填写所有 Ticker', 'error');
+        setFetchStatus('请填写所有代码', 'error');
         return;
     }
 
     setFetchStatus('正在获取数据...', 'loading');
 
     try {
-        const { baseline, rows } = await fetchAllData(tickers, mode);
+        // Both modes fetch the same way via Mode B logic (hynix + fx + etf)
+        // Mode A will get iNAV from a dedicated source in the future;
+        // for now, use the same fetch mechanism as Mode B
+        const fetchTickers = {
+            hynix: tickers.hynix,
+            fx: tickers.fx || 'KRWHKD=X',
+            etf: tickers.etf,
+        };
+
+        const { baseline, rows } = await fetchAllData(fetchTickers, 'no-inav');
 
         // Fill baseline inputs
-        const baselineContainer = document.getElementById('baseline-inputs');
         for (const [key, value] of Object.entries(baseline)) {
             const input = document.getElementById(key);
             if (input && value != null) {
@@ -282,6 +323,9 @@ async function handleFetchData() {
 
         // Fill table with fetched rows
         fillTableWithFetchedData(mode, rows);
+
+        // Show table section after successful fetch
+        document.getElementById('data-table-section').classList.remove('hidden');
 
         setFetchStatus(`已获取 ${rows.length} 条数据`, 'success');
     } catch (error) {

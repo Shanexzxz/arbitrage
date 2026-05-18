@@ -312,10 +312,16 @@ header h1 {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    flex-wrap: wrap;
 }
 
 .ticker-actions .btn svg {
     flex-shrink: 0;
+}
+
+.fetch-hint {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
 }
 
 .fetch-status {

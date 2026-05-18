@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HK ETF Hynix Arbitrage Backtester</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>港股2倍做多海力士 ETF 套利回测</h1>
+        <p class="subtitle">HK 2x Long Hynix ETF vs SK Hynix Cross-Market Arbitrage</p>
+    </header>
+
+    <main>
+        <!-- Block 1: Indicator Guide -->
+        <section id="indicator-guide" class="block">
+            <h2>
+                <button class="collapse-toggle" aria-expanded="false" aria-controls="guide-content">
+                    指标计算说明 ▶
+                </button>
+            </h2>
+            <div id="guide-content" class="collapsible hidden">
+                <div class="guide-grid">
+                    <div class="guide-card">
+                        <h3>模式A：有 iNAV 数据</h3>
+                        <table class="formula-table">
+                            <thead><tr><th>指标</th><th>公式</th><th>说明</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>iNAV涨跌幅(%)</td>
+                                    <td><code>(iNAV当前 - iNAV前值) / iNAV前值 × 100</code></td>
+                                    <td>ETF理论价值变动（含2倍杠杆+汇率+费用）</td>
+                                </tr>
+                                <tr>
+                                    <td>ETF市价涨跌幅(%)</td>
+                                    <td><code>(ETF市价当前 - ETF市价前值) / ETF市价前值 × 100</code></td>
+                                    <td>港股ETF实际交易涨跌</td>
+                                </tr>
+                                <tr>
+                                    <td>溢价/折价率(%)</td>
+                                    <td><code>(ETF市价 - iNAV) / iNAV × 100</code></td>
+                                    <td>正=溢价(ETF贵), 负=折价(ETF便宜)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="guide-card">
+                        <h3>模式B：无 iNAV（自行计算）</h3>
+                        <table class="formula-table">
+                            <thead><tr><th>指标</th><th>公式</th><th>说明</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>海力士涨跌幅(%)</td>
+                                    <td><code>(海力士当前 - 海力士前值) / 海力士前值 × 100</code></td>
+                                    <td>SK海力士正股涨跌（KRX或Next Trade）</td>
+                                </tr>
+                                <tr>
+                                    <td>汇率变动(%)</td>
+                                    <td><code>(KRW/HKD当前 - KRW/HKD前值) / KRW/HKD前值 × 100</code></td>
+                                    <td>韩元兑港币汇率变动</td>
+                                </tr>
+                                <tr>
+                                    <td>ETF市价涨跌幅(%)</td>
+                                    <td><code>(ETF市价当前 - ETF市价前值) / ETF市价前值 × 100</code></td>
+                                    <td>港股ETF实际交易涨跌</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="note">系统将合成iNAV: 合成iNAV涨跌幅 = 海力士涨跌幅 × 2 + 汇率变动</p>
+                    </div>
+                    <div class="guide-card full-width">
+                        <h3>Bloomberg 数据源参考</h3>
+                        <ul>
+                            <li>ETF: <code>PX_LAST</code>, <code>NAV</code>, <code>RT_INAV</code></li>
+                            <li>SK Hynix (000660 KS): <code>PX_LAST</code></li>
+                            <li>汇率: <code>KRWHKD Curncy</code> → <code>PX_LAST</code></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Block 2: Data Input -->
+        <section id="data-input" class="block">
+            <h2>数据输入</h2>
+            <div class="mode-switch">
+                <label><input type="radio" name="input-mode" value="inav" checked> 模式A：有 iNAV 数据</label>
+                <label><input type="radio" name="input-mode" value="no-inav"> 模式B：无 iNAV（自行计算）</label>
+            </div>
+            <div id="data-table-container"></div>
+            <div class="table-actions">
+                <button id="add-row-btn" class="btn btn-secondary">+ 添加行</button>
+                <button id="delete-row-btn" class="btn btn-danger">- 删除末行</button>
+                <button id="clear-all-btn" class="btn btn-danger">清空全部</button>
+            </div>
+        </section>
+
+        <!-- Block 3: Strategy Parameters -->
+        <section id="strategy-params" class="block">
+            <h2>策略参数</h2>
+            <div class="params-grid">
+                <div class="param-item">
+                    <label for="open-threshold">开仓阈值 (%)</label>
+                    <input type="number" id="open-threshold" value="1.5" step="0.1" min="0">
+                    <span class="hint">溢价/折价率达到此值时触发开仓</span>
+                </div>
+                <div class="param-item">
+                    <label for="close-threshold">平仓阈值 (%)</label>
+                    <input type="number" id="close-threshold" value="0.3" step="0.1" min="0">
+                    <span class="hint">价差回归至此值时平仓</span>
+                </div>
+                <div class="param-item">
+                    <label for="stop-loss">止损线 (%)</label>
+                    <input type="number" id="stop-loss" value="3.0" step="0.1" min="0">
+                    <span class="hint">单笔最大亏损</span>
+                </div>
+                <div class="param-item">
+                    <label for="tx-cost">交易成本 (%)</label>
+                    <input type="number" id="tx-cost" value="0.2" step="0.01" min="0">
+                    <span class="hint">单边费率（佣金+印花税）</span>
+                </div>
+                <div class="param-item">
+                    <label for="position-size">仓位大小 (HKD)</label>
+                    <input type="number" id="position-size" value="100000" step="10000" min="0">
+                    <span class="hint">每次开仓金额</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Run Button -->
+        <div class="run-section">
+            <button id="run-backtest-btn" class="btn btn-primary btn-large">运行回测</button>
+        </div>
+
+        <!-- Block 4: Backtest Results -->
+        <section id="backtest-results" class="block hidden">
+            <h2>回测结果</h2>
+            <div id="stats-panel" class="stats-grid"></div>
+            <div class="charts-container">
+                <div class="chart-wrapper"><canvas id="equity-chart"></canvas></div>
+                <div class="chart-wrapper"><canvas id="premium-chart"></canvas></div>
+                <div class="chart-wrapper"><canvas id="pnl-chart"></canvas></div>
+            </div>
+            <div id="trade-log-container"></div>
+        </section>
+
+        <!-- Block 5: Feasibility Conclusion -->
+        <section id="conclusion" class="block hidden">
+            <h2>可行性结论</h2>
+            <div id="traffic-light"></div>
+            <div id="conclusion-text"></div>
+        </section>
+    </main>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

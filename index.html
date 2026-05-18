@@ -32,7 +32,7 @@
         <section id="price-monitor" class="block">
             <h2>价格监控</h2>
             <div class="monitor-input">
-                <p class="inline-hint" style="margin-bottom:0.75rem;">输入全天数据：官方iNAV（09:30-14:30）、ETF成交价（09:30-16:10）、海力士股价、USD/HKD汇率。系统将在14:30后用影子iNAV接续。</p>
+                <p class="inline-hint" style="margin-bottom:0.75rem;">输入全天数据：iNAV（09:30-14:30由官方发布，14:30后留空）、ETF成交价（09:30-16:10）、海力士股价、USD/HKD汇率。14:30后系统自动用影子iNAV续接。</p>
                 <div class="monitor-baseline">
                     <span class="baseline-label">昨收基准：</span>
                     <label>iNAV(USD) <input type="number" id="mon-base-inav" placeholder="如 45.00" step="any"></label>
@@ -45,7 +45,7 @@
                         <thead>
                             <tr>
                                 <th>时间</th>
-                                <th>官方iNAV(HKD)</th>
+                                <th>iNAV(HKD)<br><span style="font-weight:400;font-size:0.65rem;">14:30后留空</span></th>
                                 <th>ETF成交价(HKD)</th>
                                 <th>海力士股价(KRW)</th>
                                 <th>USD/HKD</th>

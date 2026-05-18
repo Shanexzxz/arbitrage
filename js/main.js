@@ -448,7 +448,7 @@ function initMonitorTable() {
 function monitorRow(data = {}) {
     return `<tr>
         <td><input type="text" placeholder="HH:MM" value="${data.time || ''}"></td>
-        <td><input type="number" step="any" placeholder="官方iNAV" value="${data.inav || ''}"></td>
+        <td><input type="number" step="any" placeholder="14:30后留空" value="${data.inav || ''}"></td>
         <td><input type="number" step="any" placeholder="ETF价" value="${data.etf || ''}"></td>
         <td><input type="number" step="any" placeholder="海力士" value="${data.hynix || ''}"></td>
         <td><input type="number" step="any" placeholder="USD/HKD" value="${data.usdhkd || ''}"></td>

@@ -300,6 +300,7 @@ function setFetchStatus(text, type = '') {
 async function handleFetchData() {
     const mode = getCurrentMode();
     const tickers = getTickerValues(mode);
+    const provider = document.getElementById('data-source-provider').value;
 
     // Validate tickers
     const requiredKeys = mode === 'inav' ? ['etf', 'hynix'] : ['etf', 'hynix', 'fx'];
@@ -309,12 +310,16 @@ async function handleFetchData() {
         return;
     }
 
+    // Check provider + mode compatibility
+    if (mode === 'inav' && provider === 'yahoo') {
+        setFetchStatus('Yahoo Finance 不支持 iNAV 数据，请切换到模式B或更换数据源', 'error');
+        return;
+    }
+
     setFetchStatus('正在获取数据...', 'loading');
 
     try {
-        // Both modes fetch the same way via Mode B logic (hynix + fx + etf)
-        // Mode A will get iNAV from a dedicated source in the future;
-        // for now, use the same fetch mechanism as Mode B
+        // Build fetch tickers based on mode
         const fetchTickers = {
             hynix: tickers.hynix,
             fx: tickers.fx || 'KRWHKD=X',

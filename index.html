@@ -112,16 +112,16 @@
         <section id="data-input" class="block">
             <h2>数据输入</h2>
 
-            <!-- Data source switch -->
+            <!-- Calculation mode switch (always visible) -->
             <div class="mode-switch" style="margin-bottom: 0.75rem;">
-                <label><input type="radio" name="data-source" value="api" checked> API获取</label>
-                <label><input type="radio" name="data-source" value="manual"> 手动输入</label>
-            </div>
-
-            <!-- Calculation mode switch -->
-            <div class="mode-switch">
                 <label><input type="radio" name="input-mode" value="inav" checked> 模式A：有 iNAV 数据</label>
                 <label><input type="radio" name="input-mode" value="no-inav"> 模式B：无 iNAV（自行计算）</label>
+            </div>
+
+            <!-- Data source switch -->
+            <div class="mode-switch">
+                <label><input type="radio" name="data-source" value="api" checked> API获取</label>
+                <label><input type="radio" name="data-source" value="manual"> 手动输入</label>
             </div>
 
             <!-- API mode: data source + ticker inputs -->

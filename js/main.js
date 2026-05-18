@@ -533,15 +533,6 @@ let chartPriceVsInav = null;
 let chartShadowValidation = null;
 
 function renderMonitorCharts() {
-    const baseInav = parseFloat(document.getElementById('mon-base-inav').value);
-    const baseEtf = parseFloat(document.getElementById('mon-base-etf').value);
-    const baseHynix = parseFloat(document.getElementById('mon-base-hynix').value);
-
-    if (!baseInav || !baseEtf || !baseHynix) {
-        alert('请先填写昨收基准数据（iNAV、ETF、海力士）');
-        return;
-    }
-
     // Parse table data
     const tbody = document.getElementById('monitor-tbody');
     const rows = tbody.querySelectorAll('tr');
@@ -559,10 +550,18 @@ function renderMonitorCharts() {
         }
     }
 
-    if (data.length === 0) { alert('请输入数据'); return; }
+    if (data.length < 2) { alert('请至少输入两行数据（第一行为基准）'); return; }
 
-    // Use first row's KRW/HKD as baseline for FX change calculation
-    const baseKrwhkd = data.find(d => d.krwhkd)?.krwhkd || 1;
+    // Use first row as baseline (opening values)
+    const baseRow = data[0];
+    const baseInav = baseRow.inav;
+    const baseHynix = baseRow.hynix;
+    const baseKrwhkd = baseRow.krwhkd;
+
+    if (!baseInav || !baseHynix || !baseKrwhkd) {
+        alert('第一行（基准）的 iNAV、海力士股价、KRW/HKD 必须填写完整');
+        return;
+    }
 
     // Calculate shadow iNAV for all rows
     const CUTOFF = '14:30';

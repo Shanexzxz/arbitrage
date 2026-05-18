@@ -242,9 +242,10 @@ header h1 {
 
 /* ===== Mode Switch (Pill Style) ===== */
 .mode-switch {
-    display: inline-flex;
+    display: flex;
+    width: fit-content;
     gap: 0;
-    margin-bottom: 1.25rem;
+    margin-bottom: 0.75rem;
     background: #f1f5f9;
     border-radius: 8px;
     padding: 4px;

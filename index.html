@@ -24,20 +24,20 @@
             <div id="guide-content" class="collapsible">
                 <div class="guide-grid">
                     <div class="guide-card">
-                        <h3>模式A：有 iNAV 数据</h3>
-                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">输入原始价格，系统自动计算涨跌幅和溢价率</p>
+                        <h3>直接使用 iNAV</h3>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">适用于数据源可直接提供 iNAV（如 Bloomberg RT_INAV），只需对比 iNAV 和 ETF 市价</p>
                         <table class="formula-table">
-                            <thead><tr><th>输入</th><th>说明</th><th>Bloomberg字段</th></tr></thead>
+                            <thead><tr><th>输入</th><th>说明</th><th>数据来源</th></tr></thead>
                             <tbody>
                                 <tr>
                                     <td>iNAV</td>
-                                    <td>ETF实时指示性净值（含2倍杠杆+汇率+费用）</td>
-                                    <td><code>RT_INAV</code></td>
+                                    <td>ETF实时指示性净值（已含2倍杠杆+汇率+费用）</td>
+                                    <td><code>Bloomberg RT_INAV</code></td>
                                 </tr>
                                 <tr>
                                     <td>ETF市价</td>
                                     <td>港股ETF实际交易价格</td>
-                                    <td><code>PX_LAST</code></td>
+                                    <td><code>Yahoo / Bloomberg PX_LAST</code></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -60,25 +60,25 @@
                         </table>
                     </div>
                     <div class="guide-card">
-                        <h3>模式B：无 iNAV（自行计算）</h3>
-                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">输入原始价格，系统合成iNAV并计算溢价率</p>
+                        <h3>系统计算 iNAV</h3>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">数据源无法提供 iNAV 时（如 Yahoo Finance），系统用海力士股价×2+汇率自动合成</p>
                         <table class="formula-table">
-                            <thead><tr><th>输入</th><th>说明</th><th>Bloomberg字段</th></tr></thead>
+                            <thead><tr><th>输入</th><th>说明</th><th>数据来源</th></tr></thead>
                             <tbody>
                                 <tr>
                                     <td>海力士股价</td>
                                     <td>SK海力士正股价格（韩元）</td>
-                                    <td><code>000660 KS → PX_LAST</code></td>
+                                    <td><code>Yahoo 000660.KS / BBG PX_LAST</code></td>
                                 </tr>
                                 <tr>
                                     <td>KRW/HKD汇率</td>
                                     <td>韩元兑港币汇率</td>
-                                    <td><code>KRWHKD Curncy</code></td>
+                                    <td><code>Yahoo KRWHKD=X / BBG Curncy</code></td>
                                 </tr>
                                 <tr>
                                     <td>ETF市价</td>
                                     <td>港股ETF实际交易价格</td>
-                                    <td><code>PX_LAST</code></td>
+                                    <td><code>Yahoo 7709.HK / BBG PX_LAST</code></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -114,8 +114,8 @@
 
             <!-- Calculation mode switch -->
             <div class="mode-switch">
-                <label><input type="radio" name="input-mode" value="inav" checked> 模式A：有 iNAV 数据</label>
-                <label><input type="radio" name="input-mode" value="no-inav"> 模式B：无 iNAV（自行计算）</label>
+                <label><input type="radio" name="input-mode" value="inav" checked> 直接使用 iNAV</label>
+                <label><input type="radio" name="input-mode" value="no-inav"> 系统计算 iNAV</label>
             </div>
 
             <!-- Data source switch -->

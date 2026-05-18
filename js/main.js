@@ -312,7 +312,7 @@ async function handleFetchData() {
 
     // Check provider + mode compatibility
     if (mode === 'inav' && provider === 'yahoo') {
-        setFetchStatus('Yahoo Finance 不支持 iNAV 数据，请切换到模式B或更换数据源', 'error');
+        setFetchStatus('Yahoo Finance 不提供 iNAV 数据，请切换为「系统计算 iNAV」或更换数据源', 'error');
         return;
     }
 

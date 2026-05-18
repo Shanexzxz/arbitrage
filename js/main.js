@@ -459,6 +459,7 @@ function monitorRow(data = {}) {
     return `<tr>
         <td><input type="text" placeholder="HH:MM" value="${data.time || ''}"></td>
         <td><input type="number" step="any" class="inav-cell" placeholder="" value="${data.inav || ''}"></td>
+        <td><input type="number" step="any" class="shadow-cell" placeholder="自动计算" readonly tabindex="-1" value="${data.shadow || ''}"></td>
         <td><input type="number" step="any" placeholder="ETF价" value="${data.etf || ''}"></td>
         <td><input type="number" step="any" placeholder="海力士" value="${data.hynix || ''}"></td>
         <td><input type="number" step="any" placeholder="KRW/HKD" value="${data.krwhkd || ''}"></td>
@@ -476,14 +477,14 @@ function delMonitorRow() {
 }
 
 function downloadMonitorTemplate() {
-    const header = ['时间', 'iNAV(HKD)', 'ETF成交价(HKD)', '海力士股价(KRW)', 'KRW/HKD汇率'];
+    const header = ['时间', 'iNAV(HKD)', '影子iNAV(系统计算)', 'ETF成交价(HKD)', '海力士股价(KRW)', 'KRW/HKD汇率'];
     const sampleRows = [
-        ['09:30', '90.50', '90.55', '200500', '0.0058'],
-        ['09:45', '90.80', '90.85', '201000', '0.0058'],
-        ['10:00', '', '', '', ''],
-        ['14:30', '92.50', '92.45', '202800', '0.0058'],
-        ['14:45', '', '92.80', '203200', '0.0058'],
-        ['15:00', '', '93.10', '203500', '0.0058'],
+        ['09:30', '90.50', '', '90.55', '200500', '0.0058'],
+        ['09:45', '90.80', '', '90.85', '201000', '0.0058'],
+        ['10:00', '91.20', '', '91.50', '201500', '0.0058'],
+        ['14:30', '92.50', '', '92.45', '202800', '0.0058'],
+        ['14:45', '', '', '92.80', '203200', '0.0058'],
+        ['15:00', '', '', '93.10', '203500', '0.0058'],
     ];
 
     const ws = XLSX.utils.aoa_to_sheet([header, ...sampleRows]);
@@ -510,15 +511,16 @@ function importMonitorFile(file) {
                 return;
             }
 
-            // Fill table
+            // Fill table - columns: 时间, iNAV, (影子iNAV跳过), ETF, 海力士, KRW/HKD
             const tbody = document.getElementById('monitor-tbody');
             tbody.innerHTML = dataRows.map(row => {
                 const time = String(row[0] || '').trim();
                 const inav = row[1] != null && row[1] !== '' ? String(row[1]) : '';
-                const etf = row[2] != null && row[2] !== '' ? String(row[2]) : '';
-                const hynix = row[3] != null && row[3] !== '' ? String(row[3]) : '';
-                const usdhkd = row[4] != null && row[4] !== '' ? String(row[4]) : '';
-                return monitorRow({ time, inav, etf, hynix, usdhkd });
+                // row[2] is shadow column - skip on import
+                const etf = row[3] != null && row[3] !== '' ? String(row[3]) : '';
+                const hynix = row[4] != null && row[4] !== '' ? String(row[4]) : '';
+                const krwhkd = row[5] != null && row[5] !== '' ? String(row[5]) : '';
+                return monitorRow({ time, inav, etf, hynix, krwhkd });
             }).join('');
 
             alert(`已导入 ${dataRows.length} 行数据`);
@@ -542,9 +544,10 @@ function renderMonitorCharts() {
         const inputs = row.querySelectorAll('input');
         const time = inputs[0].value.trim();
         const inav = parseFloat(inputs[1].value) || null;
-        const etf = parseFloat(inputs[2].value) || null;
-        const hynix = parseFloat(inputs[3].value) || null;
-        const krwhkd = parseFloat(inputs[4].value) || null;
+        // inputs[2] is shadow column (readonly, skip for input)
+        const etf = parseFloat(inputs[3].value) || null;
+        const hynix = parseFloat(inputs[4].value) || null;
+        const krwhkd = parseFloat(inputs[5].value) || null;
         if (time && (etf || inav || hynix)) {
             data.push({ time, inav, etf, hynix, krwhkd });
         }
@@ -586,23 +589,19 @@ function renderMonitorCharts() {
         }
     }
 
-    // Fill shadow iNAV back into table cells (14:30 onwards) with orange background
+    // Fill shadow iNAV into the shadow column for all rows
     const tbodyRows = tbody.querySelectorAll('tr');
     let dataIdx = 0;
     for (const row of tbodyRows) {
-        const timeInput = row.querySelectorAll('input')[0];
-        const inavInput = row.querySelectorAll('input')[1];
-        const time = timeInput.value.trim();
+        const inputs = row.querySelectorAll('input');
+        const time = inputs[0].value.trim();
         if (!time) continue;
 
-        // Find matching data entry
         const match = data[dataIdx];
         if (match && match.time === time) {
-            if (time > CUTOFF && shadowInav[dataIdx] !== null && !inavInput.value) {
-                inavInput.value = shadowInav[dataIdx].toFixed(2);
-                inavInput.style.backgroundColor = '#fff7ed';
-                inavInput.style.color = '#ea580c';
-                inavInput.title = '影子iNAV（系统计算）';
+            const shadowCell = inputs[2]; // shadow column
+            if (shadowInav[dataIdx] !== null) {
+                shadowCell.value = shadowInav[dataIdx].toFixed(2);
             }
             dataIdx++;
         }

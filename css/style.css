@@ -203,6 +203,12 @@ header h1 {
     color: #ea580c;
 }
 
+#monitor-table input.shadow-cell {
+    background-color: #fff7ed;
+    color: #ea580c;
+    cursor: default;
+}
+
 #monitor-table tr:nth-child(even) td {
     background: #fafbfc;
 }

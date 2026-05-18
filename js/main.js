@@ -1,6 +1,6 @@
 // js/main.js
 
-import { renderTable, addRow, deleteLastRow, clearAll, parseData } from './data-input.js';
+import { renderTable, addRow, deleteLastRow, clearAll, parseData, validateData } from './data-input.js';
 import { runBacktest } from './backtest-engine.js';
 import { calculateStatistics } from './statistics.js';
 import { renderCharts, destroyCharts } from './charts.js';
@@ -72,6 +72,12 @@ function executeBacktest() {
 
     if (data.length === 0) {
         alert('请先输入数据（至少需要一行有效数据）');
+        return;
+    }
+
+    const errors = validateData(data, mode);
+    if (errors.length > 0) {
+        alert('数据校验失败:\n' + errors.join('\n'));
         return;
     }
 

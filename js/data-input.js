@@ -113,3 +113,28 @@ export function parseData(mode) {
 
     return data;
 }
+
+export function validateData(data, mode) {
+    const errors = [];
+
+    if (data.length === 0) {
+        errors.push('请至少输入一行有效数据');
+        return errors;
+    }
+
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        if (row.etfChange === null) {
+            errors.push(`第 ${i + 1} 行：ETF市价涨跌幅为必填项`);
+        }
+        if (mode === 'inav' && row.inavChange === null) {
+            errors.push(`第 ${i + 1} 行：iNAV涨跌幅为必填项`);
+        }
+        if (mode === 'no-inav') {
+            if (row.hynixChange === null) errors.push(`第 ${i + 1} 行：海力士涨跌幅为必填项`);
+            if (row.fxChange === null) errors.push(`第 ${i + 1} 行：汇率变动为必填项`);
+        }
+    }
+
+    return errors;
+}

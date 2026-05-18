@@ -178,34 +178,42 @@
             </div>
         </section>
 
+        <!-- Data Dashboard -->
+        <section id="dashboard" class="block hidden">
+            <h2>偏离监控看板</h2>
+            <div class="chart-wrapper" style="margin-bottom:1.25rem;"><canvas id="divergence-chart"></canvas></div>
+            <div class="dashboard-stats">
+                <div class="dashboard-split">
+                    <div class="dashboard-period">
+                        <h4>14:30前（iNAV实时）</h4>
+                        <div class="mini-stats" id="before-stats"></div>
+                    </div>
+                    <div class="dashboard-period">
+                        <h4>14:30后（iNAV冻结）</h4>
+                        <div class="mini-stats" id="after-stats"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Strategy Parameters + Run Button -->
         <section id="strategy-params" class="block">
             <h2>策略参数</h2>
             <div class="params-grid">
                 <div class="param-item">
-                    <label for="open-threshold">开仓阈值 (%)</label>
-                    <input type="number" id="open-threshold" value="1.5" step="0.1" min="0">
-                    <span class="hint">ETF溢价/折价率超过此值时开仓，越大越保守、信号越少</span>
+                    <label for="threshold">背离阈值 (%)</label>
+                    <input type="number" id="threshold" value="1.5" step="0.1" min="0">
+                    <span class="hint">溢价/折价率超过此值时触发调仓，越大越保守</span>
                 </div>
                 <div class="param-item">
-                    <label for="close-threshold">平仓阈值 (%)</label>
-                    <input type="number" id="close-threshold" value="0.3" step="0.1" min="0">
-                    <span class="hint">溢价率回归到此值以内时平仓止盈</span>
-                </div>
-                <div class="param-item">
-                    <label for="stop-loss">止损线 (%)</label>
-                    <input type="number" id="stop-loss" value="3.0" step="0.1" min="0">
-                    <span class="hint">单笔交易亏损达到此值时强制平仓</span>
-                </div>
-                <div class="param-item">
-                    <label for="tx-cost">交易成本 (%)</label>
+                    <label for="tx-cost">交易费率 (%)</label>
                     <input type="number" id="tx-cost" value="0.2" step="0.01" min="0">
-                    <span class="hint">你买卖ETF和股票的单边佣金+印花税（不含基金内部费用，iNAV已包含）</span>
+                    <span class="hint">单边佣金+印花税（不含基金内部费用，iNAV已包含）</span>
                 </div>
                 <div class="param-item">
-                    <label for="position-size">仓位大小 (HKD)</label>
-                    <input type="number" id="position-size" value="100000" step="10000" min="0">
-                    <span class="hint">每次套利交易投入的资金量</span>
+                    <label for="trade-amount">交易金额 (HKD)</label>
+                    <input type="number" id="trade-amount" value="100000" step="10000" min="0">
+                    <span class="hint">每次调仓投入的资金量</span>
                 </div>
             </div>
             <div class="run-section">

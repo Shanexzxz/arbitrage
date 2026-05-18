@@ -1,16 +1,19 @@
 // js/backtest-engine.js
 
 /**
- * Run backtest on normalized data with strategy parameters.
+ * Run backtest with rebalance model.
+ * Entry: when |premiumDiscount| >= threshold (divergence)
+ * Exit: when |premiumDiscount| shrinks (reversion)
+ * Profit = |entry premium| - |exit premium| - 2 * txCost
  *
- * @param {Array} data - Array of { time, inavChange, etfChange, premiumDiscount }
- * @param {Object} params - { openThreshold, closeThreshold, stopLoss, txCost }
- * @returns {Array} trades - Array of trade objects
+ * @param {Array} data - Array of { time, premiumDiscount, ... }
+ * @param {Object} params - { threshold, txCost, tradeAmount }
+ * @returns {Object} { trades, signals }
  */
 export function runBacktest(data, params) {
-    const { openThreshold, closeThreshold, stopLoss, txCost } = params;
+    const { threshold, txCost, tradeAmount } = params;
     const trades = [];
-    let position = null; // current open position
+    let position = null;
 
     for (let i = 0; i < data.length; i++) {
         const row = data[i];
@@ -19,51 +22,50 @@ export function runBacktest(data, params) {
         if (premium === null || premium === undefined) continue;
 
         if (position === null) {
-            // Check for entry signal
-            if (premium >= openThreshold) {
-                // ETF is expensive → sell ETF, buy stock
+            // Check for divergence signal
+            if (Math.abs(premium) >= threshold) {
                 position = {
-                    direction: 'sell_etf_buy_stock',
-                    entryIndex: i,
-                    entryTime: row.time,
-                    entryPremium: premium,
-                };
-            } else if (premium <= -openThreshold) {
-                // ETF is cheap → buy ETF, sell stock
-                position = {
-                    direction: 'buy_etf_sell_stock',
+                    direction: premium > 0 ? 'sell_etf_buy_stock' : 'buy_etf_sell_stock',
                     entryIndex: i,
                     entryTime: row.time,
                     entryPremium: premium,
                 };
             }
         } else {
-            // Check for exit signal
-            const entryPremium = position.entryPremium;
-            const pnl = calculatePnL(position.direction, entryPremium, premium, txCost);
-            const absPremium = Math.abs(premium);
+            // Check for reversion: absolute premium shrinks or crosses zero
+            const entryAbs = Math.abs(position.entryPremium);
+            const currentAbs = Math.abs(premium);
+            const crossedZero = (position.entryPremium > 0 && premium <= 0) ||
+                                (position.entryPremium < 0 && premium >= 0);
             const isLastRow = i === data.length - 1;
 
-            let exitReason = null;
+            // Exit when premium reverts below entry or crosses zero
+            if (currentAbs < entryAbs * 0.5 || crossedZero || isLastRow) {
+                const rawProfit = entryAbs - currentAbs;
+                const netProfit = rawProfit - (txCost * 2);
+                const profitHKD = netProfit * (tradeAmount / 100);
 
-            if (pnl <= -stopLoss) {
-                exitReason = 'stop_loss';
-            } else if (absPremium <= closeThreshold) {
-                exitReason = 'mean_reversion';
-            } else if (isLastRow) {
-                exitReason = 'end_of_data';
-            }
-
-            if (exitReason) {
                 trades.push({
                     ...position,
                     exitIndex: i,
                     exitTime: row.time,
                     exitPremium: premium,
-                    pnl: pnl,
-                    exitReason: exitReason,
+                    rawProfit,
+                    netProfit,
+                    profitHKD,
+                    exitReason: isLastRow ? 'end_of_data' : (crossedZero ? 'cross_zero' : 'reversion'),
                 });
                 position = null;
+
+                // Check if current point is also a new signal (opposite direction)
+                if (!isLastRow && Math.abs(premium) >= threshold) {
+                    position = {
+                        direction: premium > 0 ? 'sell_etf_buy_stock' : 'buy_etf_sell_stock',
+                        entryIndex: i,
+                        entryTime: row.time,
+                        entryPremium: premium,
+                    };
+                }
             }
         }
     }
@@ -72,19 +74,46 @@ export function runBacktest(data, params) {
 }
 
 /**
- * Calculate P&L for a trade.
- * When we sell ETF on premium: we profit as premium shrinks.
- * When we buy ETF on discount: we profit as discount shrinks.
+ * Analyze data for dashboard metrics.
+ * Splits data at 14:30 cutoff and computes divergence statistics.
+ *
+ * @param {Array} data - Array of { time, premiumDiscount }
+ * @param {number} threshold - divergence threshold %
+ * @returns {Object} dashboard metrics
  */
-function calculatePnL(direction, entryPremium, exitPremium, txCost) {
-    let raw;
-    if (direction === 'sell_etf_buy_stock') {
-        // Entered on premium, profit when premium decreases
-        raw = entryPremium - exitPremium;
-    } else {
-        // Entered on discount (negative premium), profit when premium increases
-        raw = exitPremium - entryPremium;
+export function analyzeDivergence(data, threshold) {
+    const CUTOFF = '14:30';
+
+    const before = [];
+    const after = [];
+
+    for (const row of data) {
+        if (row.premiumDiscount === null || row.premiumDiscount === undefined) continue;
+        if (row.time && row.time > CUTOFF) {
+            after.push(row);
+        } else {
+            before.push(row);
+        }
     }
-    // Subtract round-trip transaction cost (2 × one-way)
-    return raw - (txCost * 2);
+
+    const calcStats = (rows) => {
+        if (rows.length === 0) return { maxPremium: 0, maxDiscount: 0, avgAbs: 0, signalCount: 0 };
+        const premiums = rows.map(r => r.premiumDiscount);
+        const maxPremium = Math.max(...premiums);
+        const maxDiscount = Math.min(...premiums);
+        const avgAbs = premiums.reduce((s, p) => s + Math.abs(p), 0) / premiums.length;
+        const signalCount = premiums.filter(p => Math.abs(p) >= threshold).length;
+        return { maxPremium, maxDiscount, avgAbs, signalCount };
+    };
+
+    const beforeStats = calcStats(before);
+    const afterStats = calcStats(after);
+    const allStats = calcStats(data.filter(r => r.premiumDiscount != null));
+
+    return {
+        before: { ...beforeStats, count: before.length },
+        after: { ...afterStats, count: after.length },
+        all: { ...allStats, count: data.length },
+        cutoff: CUTOFF,
+    };
 }

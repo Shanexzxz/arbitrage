@@ -1,7 +1,7 @@
 // js/main.js
 
 import { renderTable, renderBaseline, addRow, deleteLastRow, clearAll, parseData, validateData } from './data-input.js';
-import { runBacktest } from './backtest-engine.js';
+import { runBacktest, analyzeDivergence } from './backtest-engine.js';
 import { calculateStatistics } from './statistics.js';
 import { renderCharts, destroyCharts } from './charts.js';
 import { generateConclusion } from './conclusion.js';
@@ -36,11 +36,9 @@ function toggleDataSource(source) {
 
 function getParams() {
     return {
-        openThreshold: parseFloat(document.getElementById('open-threshold').value) || 1.5,
-        closeThreshold: parseFloat(document.getElementById('close-threshold').value) || 0.3,
-        stopLoss: parseFloat(document.getElementById('stop-loss').value) || 3.0,
+        threshold: parseFloat(document.getElementById('threshold').value) || 1.5,
         txCost: parseFloat(document.getElementById('tx-cost').value) || 0.2,
-        positionSize: parseFloat(document.getElementById('position-size').value) || 100000,
+        tradeAmount: parseFloat(document.getElementById('trade-amount').value) || 100000,
     };
 }
 
@@ -142,18 +140,31 @@ function executeBacktest() {
 
     const params = getParams();
 
-    // Run engine
+    // Show and render dashboard
+    renderDashboard(data, params.threshold);
+
+    // Run backtest engine
     const trades = runBacktest(data, params);
 
-    // Calculate statistics
-    const stats = calculateStatistics(trades);
+    // Calculate results
+    const totalProfitHKD = trades.reduce((s, t) => s + t.profitHKD, 0);
+    const profitableTrades = trades.filter(t => t.netProfit > 0);
+    const beforeTrades = trades.filter(t => t.entryTime && t.entryTime <= '14:30');
+    const afterTrades = trades.filter(t => t.entryTime && t.entryTime > '14:30');
 
     // Show results section
     const resultsSection = document.getElementById('backtest-results');
     resultsSection.classList.remove('hidden');
 
-    // Render stats panel
-    renderStatsPanel(stats);
+    // Render simplified stats
+    renderStatsPanel({
+        totalProfitHKD,
+        totalTrades: trades.length,
+        profitableTrades: profitableTrades.length,
+        avgProfit: trades.length > 0 ? totalProfitHKD / trades.length : 0,
+        beforeCount: beforeTrades.length,
+        afterCount: afterTrades.length,
+    });
 
     // Render charts
     destroyCharts();
@@ -163,6 +174,7 @@ function executeBacktest() {
     renderTradeLog(trades);
 
     // Generate and show conclusion
+    const stats = calculateStatistics(trades.map(t => ({ pnl: t.netProfit })));
     const conclusion = generateConclusion(stats);
     renderConclusion(conclusion);
 }
@@ -170,12 +182,12 @@ function executeBacktest() {
 function renderStatsPanel(stats) {
     const panel = document.getElementById('stats-panel');
     const items = [
-        { label: '总收益率', value: `${stats.totalReturn.toFixed(2)}%`, hint: '所有交易盈亏之和' },
-        { label: '最大回撤', value: `${stats.maxDrawdown.toFixed(2)}%`, hint: '从累计收益峰值到谷值的最大跌幅' },
-        { label: '胜率', value: `${stats.winRate.toFixed(1)}%`, hint: '盈利交易数 / 总交易数' },
-        { label: '盈亏比', value: stats.profitLossRatio.toFixed(2), hint: '平均盈利 / 平均亏损，>1表示赚多亏少' },
-        { label: '夏普比率', value: stats.sharpeRatio.toFixed(2), hint: '每承担1单位风险获得的超额收益，>1.5为优秀' },
-        { label: '交易次数', value: stats.totalTrades, hint: '回测期间触发的套利交易总数' },
+        { label: '总套利收益', value: `${stats.totalProfitHKD.toFixed(0)} HKD`, hint: '所有调仓交易的累计净收益' },
+        { label: '信号触发', value: `${stats.totalTrades} 次`, hint: '背离超阈值的调仓次数' },
+        { label: '有效交易', value: `${stats.profitableTrades} 次`, hint: '扣除费用后仍盈利的交易' },
+        { label: '平均单次收益', value: `${stats.avgProfit.toFixed(0)} HKD`, hint: '总收益 / 交易次数' },
+        { label: '14:30前信号', value: `${stats.beforeCount} 次`, hint: 'iNAV实时更新期间的信号' },
+        { label: '14:30后信号', value: `${stats.afterCount} 次`, hint: 'iNAV冻结后的信号（信息优势窗口）' },
     ];
 
     panel.innerHTML = items.map(item => `
@@ -203,7 +215,7 @@ function renderTradeLog(trades) {
             <td>${t.direction === 'sell_etf_buy_stock' ? '卖ETF/买股票' : '买ETF/卖股票'}</td>
             <td>${t.entryPremium.toFixed(2)}%</td>
             <td>${t.exitPremium.toFixed(2)}%</td>
-            <td style="color:${t.pnl >= 0 ? '#16a34a' : '#dc2626'}">${t.pnl.toFixed(2)}%</td>
+            <td style="color:${t.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${t.profitHKD.toFixed(0)} HKD</td>
             <td>${formatExitReason(t.exitReason)}</td>
         </tr>
     `).join('');
@@ -213,12 +225,12 @@ function renderTradeLog(trades) {
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>开仓时间</th>
-                    <th>平仓时间</th>
+                    <th>调仓时间</th>
+                    <th>回归时间</th>
                     <th>方向</th>
-                    <th>开仓溢价率</th>
-                    <th>平仓溢价率</th>
-                    <th>盈亏</th>
+                    <th>入场背离</th>
+                    <th>出场背离</th>
+                    <th>收益</th>
                     <th>退出原因</th>
                 </tr>
             </thead>
@@ -229,8 +241,8 @@ function renderTradeLog(trades) {
 
 function formatExitReason(reason) {
     const map = {
-        'mean_reversion': '均值回归',
-        'stop_loss': '止损',
+        'reversion': '背离回归',
+        'cross_zero': '穿越零轴',
         'end_of_data': '数据结束',
     };
     return map[reason] || reason;
@@ -400,6 +412,119 @@ function fillTableWithFetchedData(mode, rows) {
                 ${tableRows}
             </tbody>
         </table>
+    `;
+}
+
+// ===== Dashboard Rendering =====
+
+let divergenceChart = null;
+
+function renderDashboard(data, threshold) {
+    const dashboard = document.getElementById('dashboard');
+    dashboard.classList.remove('hidden');
+
+    const analysis = analyzeDivergence(data, threshold);
+
+    // Render divergence chart
+    renderDivergenceChart(data, threshold);
+
+    // Render before/after stats
+    renderPeriodStats('before-stats', analysis.before, threshold);
+    renderPeriodStats('after-stats', analysis.after, threshold);
+}
+
+function renderDivergenceChart(data, threshold) {
+    const ctx = document.getElementById('divergence-chart').getContext('2d');
+    if (divergenceChart) divergenceChart.destroy();
+
+    const labels = data.map((d, i) => d.time || `${i}`);
+    const premiums = data.map(d => d.premiumDiscount);
+
+    // Find 14:30 cutoff index
+    const cutoffIndex = data.findIndex(d => d.time && d.time > '14:30');
+
+    divergenceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: '溢价/折价率 (%)',
+                data: premiums,
+                borderColor: '#2563eb',
+                borderWidth: 2,
+                pointRadius: 0,
+                fill: false,
+            }],
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'ETF与iNAV偏离走势' },
+                annotation: undefined,
+            },
+            scales: {
+                y: {
+                    title: { display: true, text: '偏离率 (%)' },
+                },
+            },
+        },
+        plugins: [{
+            id: 'thresholdLines',
+            afterDraw(chart) {
+                const { ctx, chartArea, scales } = chart;
+                const yScale = scales.y;
+                const xScale = scales.x;
+
+                // Draw threshold lines
+                ctx.save();
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = '#dc2626';
+                ctx.lineWidth = 1;
+
+                const yTop = yScale.getPixelForValue(threshold);
+                const yBottom = yScale.getPixelForValue(-threshold);
+
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, yTop);
+                ctx.lineTo(chartArea.right, yTop);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, yBottom);
+                ctx.lineTo(chartArea.right, yBottom);
+                ctx.stroke();
+
+                // Draw 14:30 vertical line
+                if (cutoffIndex > 0) {
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeStyle = '#ca8a04';
+                    ctx.lineWidth = 1.5;
+                    const xPos = xScale.getPixelForValue(cutoffIndex);
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, chartArea.top);
+                    ctx.lineTo(xPos, chartArea.bottom);
+                    ctx.stroke();
+
+                    // Label
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = '#ca8a04';
+                    ctx.font = '11px sans-serif';
+                    ctx.fillText('14:30 iNAV冻结', xPos + 4, chartArea.top + 14);
+                }
+
+                ctx.restore();
+            }
+        }],
+    });
+}
+
+function renderPeriodStats(containerId, stats, threshold) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = `
+        <div class="mini-stat"><div class="val" style="color:#dc2626">${stats.maxPremium.toFixed(2)}%</div><div class="lbl">最大溢价</div></div>
+        <div class="mini-stat"><div class="val" style="color:#2563eb">${stats.maxDiscount.toFixed(2)}%</div><div class="lbl">最大折价</div></div>
+        <div class="mini-stat"><div class="val">${stats.signalCount}</div><div class="lbl">超阈值次数</div></div>
+        <div class="mini-stat"><div class="val">${stats.avgAbs.toFixed(2)}%</div><div class="lbl">平均|偏离|</div></div>
     `;
 }
 

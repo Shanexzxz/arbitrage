@@ -108,6 +108,17 @@ function init() {
         }
     });
 
+    // Collapse toggle (smooth animation)
+    const toggle = document.querySelector('.collapse-toggle');
+    const content = document.getElementById('guide-content');
+    if (toggle && content) {
+        toggle.addEventListener('click', () => {
+            const expanded = toggle.getAttribute('aria-expanded') === 'true';
+            toggle.setAttribute('aria-expanded', !expanded);
+            content.classList.toggle('open');
+        });
+    }
+
     // Run backtest button
     document.getElementById('run-backtest-btn').addEventListener('click', () => {
         executeBacktest();

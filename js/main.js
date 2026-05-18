@@ -54,14 +54,13 @@ function init() {
         }
     });
 
-    // Collapse toggle
+    // Collapse toggle (smooth animation)
     const toggle = document.querySelector('.collapse-toggle');
     const content = document.getElementById('guide-content');
     toggle.addEventListener('click', () => {
         const expanded = toggle.getAttribute('aria-expanded') === 'true';
         toggle.setAttribute('aria-expanded', !expanded);
-        toggle.textContent = expanded ? '指标计算说明 ▶' : '指标计算说明 ▼';
-        content.classList.toggle('hidden');
+        content.classList.toggle('open');
     });
 
     // Run backtest button

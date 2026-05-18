@@ -25,57 +25,83 @@
                 <div class="guide-grid">
                     <div class="guide-card">
                         <h3>模式A：有 iNAV 数据</h3>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">输入原始价格，系统自动计算涨跌幅和溢价率</p>
                         <table class="formula-table">
-                            <thead><tr><th>指标</th><th>公式</th><th>说明</th></tr></thead>
+                            <thead><tr><th>输入</th><th>说明</th><th>Bloomberg字段</th></tr></thead>
                             <tbody>
                                 <tr>
-                                    <td>iNAV涨跌幅(%)</td>
-                                    <td><code>(iNAV当前 - iNAV前值) / iNAV前值 × 100</code></td>
-                                    <td>ETF理论价值变动（含2倍杠杆+汇率+费用）</td>
+                                    <td>iNAV</td>
+                                    <td>ETF实时指示性净值（含2倍杠杆+汇率+费用）</td>
+                                    <td><code>RT_INAV</code></td>
                                 </tr>
                                 <tr>
-                                    <td>ETF市价涨跌幅(%)</td>
-                                    <td><code>(ETF市价当前 - ETF市价前值) / ETF市价前值 × 100</code></td>
-                                    <td>港股ETF实际交易涨跌</td>
+                                    <td>ETF市价</td>
+                                    <td>港股ETF实际交易价格</td>
+                                    <td><code>PX_LAST</code></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <table class="formula-table" style="margin-top:0.75rem;">
+                            <thead><tr><th>系统计算</th><th>公式</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>iNAV涨跌幅</td>
+                                    <td><code>(iNAV当前 - iNAV基准) / iNAV基准 × 100%</code></td>
                                 </tr>
                                 <tr>
-                                    <td>溢价/折价率(%)</td>
-                                    <td><code>(ETF市价 - iNAV) / iNAV × 100</code></td>
-                                    <td>正=溢价(ETF贵), 负=折价(ETF便宜)</td>
+                                    <td>ETF涨跌幅</td>
+                                    <td><code>(ETF当前 - ETF基准) / ETF基准 × 100%</code></td>
+                                </tr>
+                                <tr>
+                                    <td>溢价/折价率</td>
+                                    <td><code>ETF涨跌幅 - iNAV涨跌幅</code></td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                     <div class="guide-card">
                         <h3>模式B：无 iNAV（自行计算）</h3>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">输入原始价格，系统合成iNAV并计算溢价率</p>
                         <table class="formula-table">
-                            <thead><tr><th>指标</th><th>公式</th><th>说明</th></tr></thead>
+                            <thead><tr><th>输入</th><th>说明</th><th>Bloomberg字段</th></tr></thead>
                             <tbody>
                                 <tr>
-                                    <td>海力士涨跌幅(%)</td>
-                                    <td><code>(海力士当前 - 海力士前值) / 海力士前值 × 100</code></td>
-                                    <td>SK海力士正股涨跌（KRX或Next Trade）</td>
+                                    <td>海力士股价</td>
+                                    <td>SK海力士正股价格（韩元）</td>
+                                    <td><code>000660 KS → PX_LAST</code></td>
                                 </tr>
                                 <tr>
-                                    <td>汇率变动(%)</td>
-                                    <td><code>(KRW/HKD当前 - KRW/HKD前值) / KRW/HKD前值 × 100</code></td>
-                                    <td>韩元兑港币汇率变动</td>
+                                    <td>KRW/HKD汇率</td>
+                                    <td>韩元兑港币汇率</td>
+                                    <td><code>KRWHKD Curncy</code></td>
                                 </tr>
                                 <tr>
-                                    <td>ETF市价涨跌幅(%)</td>
-                                    <td><code>(ETF市价当前 - ETF市价前值) / ETF市价前值 × 100</code></td>
-                                    <td>港股ETF实际交易涨跌</td>
+                                    <td>ETF市价</td>
+                                    <td>港股ETF实际交易价格</td>
+                                    <td><code>PX_LAST</code></td>
                                 </tr>
                             </tbody>
                         </table>
-                        <p class="note">系统将合成iNAV: 合成iNAV涨跌幅 = 海力士涨跌幅 × 2 + 汇率变动</p>
+                        <table class="formula-table" style="margin-top:0.75rem;">
+                            <thead><tr><th>系统计算</th><th>公式</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>合成iNAV涨跌幅</td>
+                                    <td><code>海力士涨跌幅 × 2 + 汇率变动</code></td>
+                                </tr>
+                                <tr>
+                                    <td>溢价/折价率</td>
+                                    <td><code>ETF涨跌幅 - 合成iNAV涨跌幅</code></td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                     <div class="guide-card full-width">
-                        <h3>Bloomberg 数据源参考</h3>
+                        <h3>使用说明</h3>
                         <ul>
-                            <li>ETF: <code>PX_LAST</code>, <code>NAV</code>, <code>RT_INAV</code></li>
-                            <li>SK Hynix (000660 KS): <code>PX_LAST</code></li>
-                            <li>汇率: <code>KRWHKD Curncy</code> → <code>PX_LAST</code></li>
+                            <li><strong>第一行为基准价格</strong>（通常为开盘价或昨收价），后续行相对第一行计算涨跌幅</li>
+                            <li>可从 Bloomberg 导出分钟级数据后逐行填入</li>
+                            <li>溢价率 > 0：ETF贵了（卖ETF/买股票）；溢价率 < 0：ETF便宜了（买ETF/卖股票）</li>
                         </ul>
                     </div>
                 </div>

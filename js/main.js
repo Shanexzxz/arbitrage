@@ -500,9 +500,17 @@ function updateShadowColumn() {
     const baseHynix = parseFloat(firstInputs[4].value) || null;
     const baseKrwhkd = parseFloat(firstInputs[5].value) || null;
 
+    let lastEtf = null;
+    let lastShadow = null;
+    let lastInav = null;
+    let lastTime = '';
+
     for (const row of rows) {
         const inputs = row.querySelectorAll('input');
         const shadowCell = inputs[2];
+        const time = inputs[0].value.trim();
+        const inav = parseFloat(inputs[1].value) || null;
+        const etf = parseFloat(inputs[3].value) || null;
         const hynix = parseFloat(inputs[4].value) || null;
         const krwhkd = parseFloat(inputs[5].value) || null;
 
@@ -511,10 +519,74 @@ function updateShadowColumn() {
             const fxChange = (krwhkd - baseKrwhkd) / baseKrwhkd;
             const shadow = baseInav * (1 + hynixChange * 2) * (1 + fxChange);
             shadowCell.value = shadow.toFixed(2);
+            lastShadow = shadow;
         } else {
             shadowCell.value = '';
         }
+
+        if (etf) lastEtf = etf;
+        if (inav) lastInav = inav;
+        if (time) lastTime = time;
     }
+
+    // Update divergence indicator with latest row data
+    updateDivergenceIndicator(lastEtf, lastInav, lastShadow, lastTime);
+}
+
+function updateDivergenceIndicator(etf, officialInav, shadowInav, time) {
+    const container = document.getElementById('divergence-indicator');
+    if (!etf || !shadowInav) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const CUTOFF = '14:30';
+    const isPostCutoff = time > CUTOFF;
+    const referenceInav = (!isPostCutoff && officialInav) ? officialInav : shadowInav;
+    const inavSource = (!isPostCutoff && officialInav) ? '官方iNAV' : '影子iNAV';
+
+    // Calculate divergence
+    const divergence = ((etf - referenceInav) / referenceInav * 100);
+    const absDivergence = Math.abs(divergence);
+
+    // Determine signal strength
+    let signalClass = '';
+    let actionText = '';
+    let actionClass = 'hold';
+
+    if (absDivergence >= 2.0) {
+        signalClass = 'signal-strong';
+        actionText = divergence > 0 ? '强烈卖出ETF / 买入股票' : '强烈买入ETF / 卖出股票';
+        actionClass = divergence > 0 ? 'sell' : 'buy';
+    } else if (absDivergence >= 1.0) {
+        signalClass = 'signal';
+        actionText = divergence > 0 ? '考虑卖出ETF / 买入股票' : '考虑买入ETF / 卖出股票';
+        actionClass = divergence > 0 ? 'sell' : 'buy';
+    } else {
+        actionText = '偏离不足，暂不交易';
+    }
+
+    const valueClass = divergence > 0.1 ? 'positive' : (divergence < -0.1 ? 'negative' : 'neutral');
+
+    container.innerHTML = `
+        <div class="div-card ${signalClass}">
+            <div class="div-value ${valueClass}">${divergence >= 0 ? '+' : ''}${divergence.toFixed(3)}%</div>
+            <div class="div-label">当前偏离度（ETF vs ${inavSource}）</div>
+            <div class="div-action ${actionClass}">${actionText}</div>
+        </div>
+        <div class="div-card">
+            <div class="div-value neutral">${referenceInav.toFixed(2)}</div>
+            <div class="div-label">${inavSource} (HKD)</div>
+        </div>
+        <div class="div-card">
+            <div class="div-value neutral">${etf.toFixed(2)}</div>
+            <div class="div-label">ETF成交价 (HKD)</div>
+        </div>
+        <div class="div-card">
+            <div class="div-value neutral">${time}</div>
+            <div class="div-label">最新数据时间${isPostCutoff ? '（iNAV已停更）' : ''}</div>
+        </div>
+    `;
 }
 
 function downloadMonitorTemplate() {

@@ -113,6 +113,70 @@ header h1 {
     font-weight: 400;
 }
 
+/* ===== Divergence Indicator Panel ===== */
+.divergence-indicator {
+    display: flex;
+    gap: 1rem;
+    margin: 1.25rem 0;
+    flex-wrap: wrap;
+}
+
+.div-card {
+    flex: 1;
+    min-width: 180px;
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+    border: 1.5px solid var(--color-border);
+    background: #fafbfc;
+}
+
+.div-card.signal {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+
+.div-card.signal-strong {
+    border-color: #dc2626;
+    background: #fef2f2;
+    animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+    0%, 100% { border-color: #dc2626; }
+    50% { border-color: #fca5a5; }
+}
+
+.div-card .div-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+.div-card .div-value.positive { color: #dc2626; }
+.div-card .div-value.negative { color: #2563eb; }
+.div-card .div-value.neutral { color: var(--color-text-muted); }
+
+.div-card .div-label {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    margin-top: 0.25rem;
+    font-weight: 500;
+}
+
+.div-card .div-action {
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 0.4rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.div-action.buy { background: #dbeafe; color: #1d4ed8; }
+.div-action.sell { background: #fee2e2; color: #dc2626; }
+.div-action.hold { background: #f1f5f9; color: var(--color-text-muted); }
+
 /* ===== Price Monitor Section ===== */
 .monitor-input {
     margin-bottom: 1.5rem;

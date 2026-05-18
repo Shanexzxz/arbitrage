@@ -435,16 +435,17 @@ function updateProviderAvailability(mode) {
     if (mode === 'inav') {
         yahooOption.disabled = true;
         yahooOption.textContent = 'Yahoo Finance（不支持 iNAV，请选其他数据源）';
-        // If yahoo is currently selected, show token input for alternative
+        // If yahoo is currently selected, auto-switch to first available alternative
         if (select.value === 'yahoo') {
+            select.value = 'alphavantage';
             tokenInput.classList.remove('hidden');
         }
     } else {
         yahooOption.disabled = false;
         yahooOption.textContent = 'Yahoo Finance（免费，无需Token）';
-        if (select.value === 'yahoo') {
-            tokenInput.classList.add('hidden');
-        }
+        // Auto-switch back to Yahoo when switching to system-calculated mode
+        select.value = 'yahoo';
+        tokenInput.classList.add('hidden');
     }
 }
 

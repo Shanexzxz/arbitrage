@@ -137,9 +137,45 @@ Pure frontend static HTML/JS page. No backend required. Open and use immediately
 4. **Execution Risk** — Time lag between two markets when executing both legs
 5. **Next Trade Data Availability** — Bloomberg coverage of Next Trade platform needs verification
 
+## V2 Strategy Enhancement: 14:30-16:10 Shadow iNAV Window
+
+### Background
+
+- KRX main board closes at 14:30 → iNAV (7709IV HK Equity) stops updating
+- HK ETF continues trading until 16:10
+- SK Hynix continues trading on Next Trade platform until 19:00
+- Between 14:30-16:10, most participants lose their iNAV reference
+
+### Shadow iNAV Logic
+
+After 14:30, calculate a "shadow iNAV" using Next Trade Hynix price:
+```
+Shadow iNAV = Frozen iNAV × (1 + Next Trade Hynix change since 14:30 × 2 + FX change)
+```
+
+Compare shadow iNAV to ETF market price → information asymmetry = larger arbitrage opportunity.
+
+### Position Management (No Close, Only Rebalance)
+
+This is a hedged strategy, not directional:
+- Always maintain: ETF position change = -Stock position change
+- When premium appears: Buy more ETF + Sell equivalent stock
+- When discount appears: Sell ETF + Buy equivalent stock
+- No "close" concept — only rebalancing to capture spread
+
+### V2 Backtest Changes Needed
+
+1. Replace open/close with rebalance model (accumulate spread P&L)
+2. Add 14:30 cutoff: switch from real iNAV to shadow iNAV
+3. Integrate Next Trade as data source for post-14:30 Hynix price
+4. Track cumulative hedge-adjusted P&L instead of per-trade P&L
+
 ## Data Source: Bloomberg
 
 Key fields to export:
-- ETF: `PX_LAST`, `NAV`, `RT_INAV`, `PX_BID`, `PX_ASK`, `VOLUME`
+- ETF: `PX_LAST`, `NAV`, `PX_BID`, `PX_ASK`, `VOLUME`
+- ETF iNAV: `7709IV HK Equity` → `PX_LAST` (via TICK → Quote, 1 Min interval)
+- ETF Previous Close: `7709 HK Equity` → `PX_YEST_CLOSE`
+- iNAV Previous Close: `7709IV HK Equity` → `PX_YEST_CLOSE`
 - SK Hynix (000660 KS): `PX_LAST`, `PX_BID`, `PX_ASK`, `VOLUME`
 - FX: `KRWHKD Curncy` → `PX_LAST`

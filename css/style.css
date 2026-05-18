@@ -812,6 +812,67 @@ header h1 {
     font-size: 0.88rem;
 }
 
+/* ===== Bloomberg Guide ===== */
+.bbg-guide {
+    border-top: 3px solid #1e3a5f;
+}
+
+.bbg-guide h2 {
+    color: #1e3a5f;
+}
+
+.bbg-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.bbg-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.bbg-section h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.6rem;
+    color: var(--color-text);
+}
+
+.bbg-cmd {
+    margin-top: 0.5rem;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+}
+
+.bbg-cmd code {
+    background: #e8f0fe;
+    color: var(--color-primary-dark);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+.bbg-note {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+}
+
+.bbg-code {
+    margin-top: 0.5rem;
+    padding: 0.6rem 0.8rem;
+    background: #1e293b;
+    color: #93c5fd;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    overflow-x: auto;
+    white-space: pre-wrap;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
     body { padding: 1rem; }

@@ -221,6 +221,66 @@
             <div id="traffic-light"></div>
             <div id="conclusion-text"></div>
         </section>
+
+        <!-- Bloomberg Data Guide -->
+        <section class="block bbg-guide">
+            <h2>Bloomberg 数据获取指南</h2>
+
+            <div class="bbg-section">
+                <h3>1. 获取昨收价（基准）</h3>
+                <table class="formula-table">
+                    <thead><tr><th>数据</th><th>Ticker</th><th>Field</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td>iNAV 昨收</td>
+                            <td><code>7709IV HK Equity</code></td>
+                            <td><code>PX_YEST_CLOSE</code></td>
+                        </tr>
+                        <tr>
+                            <td>ETF 昨收</td>
+                            <td><code>7709 HK Equity</code></td>
+                            <td><code>PX_YEST_CLOSE</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="bbg-cmd">Excel: <code>=BDP("7709IV HK Equity", "PX_YEST_CLOSE")</code></p>
+            </div>
+
+            <div class="bbg-section">
+                <h3>2. 获取日内分钟数据</h3>
+                <table class="formula-table">
+                    <thead><tr><th>数据</th><th>Ticker</th><th>操作</th><th>Records</th><th>Interval</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td>iNAV 分钟级</td>
+                            <td><code>7709IV HK Equity</code></td>
+                            <td><code>TICK &lt;GO&gt;</code></td>
+                            <td>Quote</td>
+                            <td>1 Min / 5 Min</td>
+                        </tr>
+                        <tr>
+                            <td>ETF 成交价</td>
+                            <td><code>7709 HK Equity</code></td>
+                            <td><code>TICK &lt;GO&gt;</code></td>
+                            <td>Trade</td>
+                            <td>1 Min / 5 Min</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="bbg-note">iNAV 是发行商发布的指示性净值，通过 Quote 记录获取；ETF 实际成交价通过 Trade 记录获取。</p>
+            </div>
+
+            <div class="bbg-section">
+                <h3>3. Excel 批量导出（BDH）</h3>
+                <pre class="bbg-code">=BDH("7709IV HK Equity","PX_LAST","20260518 09:30:00","20260518 16:00:00","BarSize=1","BarType=TRADE")</pre>
+                <p class="bbg-note">BarSize=1 为1分钟，改为5即5分钟。导出后粘贴到上方手动输入表格即可。</p>
+            </div>
+
+            <div class="bbg-section">
+                <h3>4. 查找 iNAV Ticker</h3>
+                <p class="bbg-note">如不确定 iNAV ticker，在 Terminal 输入 <code>7709 HK Equity → RELS &lt;GO&gt;</code> 查看关联证券，找到 IOPV/iNAV 对应的 Index ticker。</p>
+            </div>
+        </section>
     </main>
 
     <script type="module" src="js/main.js"></script>

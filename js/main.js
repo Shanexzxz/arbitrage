@@ -107,15 +107,6 @@ function init() {
         }
     });
 
-    // Collapse toggle (smooth animation)
-    const toggle = document.querySelector('.collapse-toggle');
-    const content = document.getElementById('guide-content');
-    toggle.addEventListener('click', () => {
-        const expanded = toggle.getAttribute('aria-expanded') === 'true';
-        toggle.setAttribute('aria-expanded', !expanded);
-        content.classList.toggle('open');
-    });
-
     // Run backtest button
     document.getElementById('run-backtest-btn').addEventListener('click', () => {
         executeBacktest();
@@ -407,7 +398,7 @@ function updateHints() {
     const sourceHint = document.getElementById('source-hint');
 
     if (mode === 'inav') {
-        modeHint.textContent = '数据源直接提供 iNAV 时选此项（如 Bloomberg），系统仅对比 iNAV 与 ETF 市价';
+        modeHint.textContent = '数据源直接提供 iNAV 时选此项（如 Bloomberg 7709IV Index），系统仅对比 iNAV 与 ETF 市价';
     } else {
         modeHint.textContent = '无 iNAV 数据源时选此项，系统用海力士股价×2 + 汇率变动自动合成 iNAV';
     }
@@ -416,6 +407,32 @@ function updateHints() {
         sourceHint.textContent = '通过 API 自动获取实时行情数据';
     } else {
         sourceHint.textContent = '手动填入基准价格（昨收）和当日实时价格数据';
+    }
+
+    // Disable/enable Yahoo Finance based on mode
+    updateProviderAvailability(mode);
+}
+
+function updateProviderAvailability(mode) {
+    const select = document.getElementById('data-source-provider');
+    if (!select) return;
+
+    const yahooOption = select.querySelector('option[value="yahoo"]');
+    if (mode === 'inav') {
+        yahooOption.disabled = true;
+        yahooOption.textContent = 'Yahoo Finance（不支持 iNAV，请选其他数据源）';
+        // If yahoo is currently selected, switch to first available
+        if (select.value === 'yahoo') {
+            // Try to select another option, or keep it but show warning
+            const tokenContainer = document.getElementById('token-input-container');
+            tokenContainer.classList.remove('hidden');
+        }
+    } else {
+        yahooOption.disabled = false;
+        yahooOption.textContent = 'Yahoo Finance（免费，无需Token）';
+        if (select.value === 'yahoo') {
+            document.getElementById('token-input-container').classList.add('hidden');
+        }
     }
 }
 

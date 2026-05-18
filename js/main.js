@@ -60,6 +60,7 @@ function init() {
     document.querySelectorAll('input[name="data-source"]').forEach(radio => {
         radio.addEventListener('change', () => {
             toggleDataSource(getCurrentDataSource());
+            updateHints();
             setFetchStatus('');
         });
     });
@@ -71,6 +72,7 @@ function init() {
             renderTickerInputs(newMode);
             renderBaseline(baselineContainer, newMode);
             renderTable(container, newMode);
+            updateHints();
             setFetchStatus('');
         });
     });
@@ -395,6 +397,26 @@ function fillTableWithFetchedData(mode, rows) {
             </tbody>
         </table>
     `;
+}
+
+function updateHints() {
+    const mode = getCurrentMode();
+    const source = getCurrentDataSource();
+
+    const modeHint = document.getElementById('mode-hint');
+    const sourceHint = document.getElementById('source-hint');
+
+    if (mode === 'inav') {
+        modeHint.textContent = '数据源直接提供 iNAV 时选此项（如 Bloomberg），系统仅对比 iNAV 与 ETF 市价';
+    } else {
+        modeHint.textContent = '无 iNAV 数据源时选此项，系统用海力士股价×2 + 汇率变动自动合成 iNAV';
+    }
+
+    if (source === 'api') {
+        sourceHint.textContent = '通过 API 自动获取实时行情数据';
+    } else {
+        sourceHint.textContent = '手动填入基准价格（昨收）和当日实时价格数据';
+    }
 }
 
 document.addEventListener('DOMContentLoaded', init);

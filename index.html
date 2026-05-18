@@ -117,12 +117,14 @@
                 <label><input type="radio" name="input-mode" value="inav" checked> 直接使用 iNAV</label>
                 <label><input type="radio" name="input-mode" value="no-inav"> 系统计算 iNAV</label>
             </div>
+            <p class="inline-hint" id="mode-hint">数据源直接提供 iNAV 时选此项（如 Bloomberg），系统仅对比 iNAV 与 ETF 市价</p>
 
             <!-- Data source switch -->
             <div class="mode-switch" style="margin-top: 0.75rem;">
                 <label><input type="radio" name="data-source" value="api" checked> API获取</label>
                 <label><input type="radio" name="data-source" value="manual"> 手动输入</label>
             </div>
+            <p class="inline-hint" id="source-hint">通过 API 自动获取实时行情数据</p>
 
             <!-- API mode: data source + ticker inputs -->
             <div id="api-section">
@@ -180,27 +182,27 @@
                 <div class="param-item">
                     <label for="open-threshold">开仓阈值 (%)</label>
                     <input type="number" id="open-threshold" value="1.5" step="0.1" min="0">
-                    <span class="hint">溢价/折价率达到此值时触发开仓</span>
+                    <span class="hint">ETF溢价/折价率超过此值时开仓，越大越保守、信号越少</span>
                 </div>
                 <div class="param-item">
                     <label for="close-threshold">平仓阈值 (%)</label>
                     <input type="number" id="close-threshold" value="0.3" step="0.1" min="0">
-                    <span class="hint">价差回归至此值时平仓</span>
+                    <span class="hint">溢价率回归到此值以内时平仓止盈</span>
                 </div>
                 <div class="param-item">
                     <label for="stop-loss">止损线 (%)</label>
                     <input type="number" id="stop-loss" value="3.0" step="0.1" min="0">
-                    <span class="hint">单笔最大亏损</span>
+                    <span class="hint">单笔交易亏损达到此值时强制平仓</span>
                 </div>
                 <div class="param-item">
                     <label for="tx-cost">交易成本 (%)</label>
                     <input type="number" id="tx-cost" value="0.2" step="0.01" min="0">
-                    <span class="hint">单边费率（佣金+印花税）</span>
+                    <span class="hint">你买卖ETF和股票的单边佣金+印花税（不含基金内部费用，iNAV已包含）</span>
                 </div>
                 <div class="param-item">
                     <label for="position-size">仓位大小 (HKD)</label>
                     <input type="number" id="position-size" value="100000" step="10000" min="0">
-                    <span class="hint">每次开仓金额</span>
+                    <span class="hint">每次套利交易投入的资金量</span>
                 </div>
             </div>
         </section>

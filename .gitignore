@@ -2,3 +2,11 @@
 *.swp
 *~
 server/node_modules/
+
+# runtime artifacts
+.env
+.server.pid
+.watchdog.pid
+server.log
+server.log.*
+watchdog.log

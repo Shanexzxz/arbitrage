@@ -1164,3 +1164,92 @@ header h1 {
     .charts-container { grid-template-columns: 1fr; }
     .params-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== Section role tags & subtitles ===== */
+.section-tag {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+    letter-spacing: 0.04em;
+}
+
+.section-tag.tag-live {
+    background: rgba(22, 163, 74, 0.12);
+    color: var(--color-success);
+    border: 1px solid rgba(22, 163, 74, 0.3);
+}
+
+.section-tag.tag-history {
+    background: rgba(202, 138, 4, 0.12);
+    color: var(--color-warning);
+    border: 1px solid rgba(202, 138, 4, 0.3);
+}
+
+.section-subtitle {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin: 0.35rem 0 1rem 0;
+    line-height: 1.55;
+}
+
+.section-subtitle strong {
+    color: var(--color-primary-dark);
+    font-weight: 600;
+}
+
+/* ===== Baseline / data-convention notice ===== */
+.baseline-notice {
+    font-size: 0.85rem;
+    line-height: 1.7;
+    color: #334155;
+    background: #f8fafc;
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--color-primary);
+    border-radius: 6px;
+    padding: 0.7rem 0.95rem;
+}
+
+.baseline-notice-row {
+    margin-bottom: 0.3rem;
+}
+
+.baseline-notice strong {
+    color: var(--color-primary-dark);
+}
+
+.baseline-notice code {
+    background: rgba(37, 99, 235, 0.08);
+    color: var(--color-primary-dark);
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    font-size: 0.78rem;
+}
+
+.baseline-notice-list {
+    margin: 0.4rem 0 0 0;
+    padding-left: 1.1rem;
+}
+
+.baseline-notice-list li {
+    margin-bottom: 0.2rem;
+}
+
+.tag-truth, .tag-shadow, .tag-skip {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    margin-right: 0.35rem;
+    vertical-align: 1px;
+    letter-spacing: 0.02em;
+}
+.tag-truth  { background: rgba(22, 163, 74, 0.12);  color: var(--color-success); border: 1px solid rgba(22, 163, 74, 0.3); }
+.tag-shadow { background: rgba(202, 138, 4, 0.12);  color: var(--color-warning); border: 1px solid rgba(202, 138, 4, 0.3); }
+.tag-skip   { background: rgba(100, 116, 139, 0.12); color: var(--color-text-muted); border: 1px solid rgba(100, 116, 139, 0.3); }
+
+

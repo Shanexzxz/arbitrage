@@ -1,141 +1,110 @@
 // js/data-input.js
 
-// Mode A: user inputs raw iNAV price and ETF price
-const COLUMNS_INAV = [
-    { key: 'time', label: '时间', type: 'text', placeholder: 'e.g. 09:30' },
-    { key: 'inavPrice', label: 'iNAV', type: 'number', placeholder: '10.12' },
-    { key: 'etfPrice', label: 'ETF市价', type: 'number', placeholder: '10.15' },
+// Unified column schema for the backtest table.
+// Per-row iNAV resolution is handled in parseData(): if `iNAV(HKD)` is given,
+// use it as the truth; otherwise fall back to the synthetic shadow iNAV
+// derived from `海力士股价(KRW)` + `KRW/HKD汇率`. Rows that cannot resolve
+// either way are silently skipped.
+const COLUMNS = [
+    { key: 'date',       label: '日期',          type: 'text',   placeholder: 'YYYY-MM-DD' },
+    { key: 'time',       label: '时间',          type: 'text',   placeholder: 'HH:MM' },
+    { key: 'inavPrice',  label: 'iNAV(HKD)',     type: 'number', placeholder: '14:30前' },
+    { key: 'hynixPrice', label: '海力士股价(KRW)', type: 'number', placeholder: '201000' },
+    { key: 'fxRate',     label: 'KRW/HKD汇率',    type: 'number', placeholder: '0.00600' },
+    { key: 'etfPrice',   label: 'ETF市价(HKD)',   type: 'number', placeholder: '10.15' },
 ];
 
-// Mode B: user inputs raw Hynix price, FX rate, and ETF price
-const COLUMNS_NO_INAV = [
-    { key: 'time', label: '时间', type: 'text', placeholder: 'e.g. 09:30' },
-    { key: 'hynixPrice', label: '海力士股价', type: 'number', placeholder: '201000' },
-    { key: 'fxRate', label: 'KRW/HKD汇率', type: 'number', placeholder: '0.00600' },
-    { key: 'etfPrice', label: 'ETF市价', type: 'number', placeholder: '10.15' },
+// Demo data spans 3 trading days. iNAV is provided up through 14:30 (BBG
+// publishes it then), and left blank afterwards — the engine derives a
+// synthetic iNAV for those rows from Hynix + FX.
+const DEMO_DATA = [
+    { date: '2026-05-13', time: '09:30', inavPrice: '10.00', hynixPrice: '200000', fxRate: '0.00600', etfPrice: '10.00' },
+    { date: '2026-05-13', time: '10:30', inavPrice: '10.10', hynixPrice: '201000', fxRate: '0.00600', etfPrice: '10.28' }, // premium
+    { date: '2026-05-13', time: '13:30', inavPrice: '10.15', hynixPrice: '201500', fxRate: '0.00601', etfPrice: '10.16' }, // reverted
+    { date: '2026-05-13', time: '14:30', inavPrice: '10.20', hynixPrice: '202000', fxRate: '0.00601', etfPrice: '10.19' },
+    { date: '2026-05-13', time: '15:30', inavPrice: '',      hynixPrice: '202200', fxRate: '0.00600', etfPrice: '10.40' }, // shadow iNAV
+    { date: '2026-05-13', time: '16:00', inavPrice: '',      hynixPrice: '202300', fxRate: '0.00601', etfPrice: '10.25' },
+    { date: '2026-05-14', time: '09:30', inavPrice: '10.25', hynixPrice: '202500', fxRate: '0.00600', etfPrice: '10.25' },
+    { date: '2026-05-14', time: '10:30', inavPrice: '10.32', hynixPrice: '203200', fxRate: '0.00601', etfPrice: '10.10' }, // discount
+    { date: '2026-05-14', time: '13:30', inavPrice: '10.30', hynixPrice: '203000', fxRate: '0.00600', etfPrice: '10.32' },
+    { date: '2026-05-14', time: '14:30', inavPrice: '10.31', hynixPrice: '203100', fxRate: '0.00601', etfPrice: '10.30' },
+    { date: '2026-05-14', time: '15:30', inavPrice: '',      hynixPrice: '203300', fxRate: '0.00601', etfPrice: '10.34' },
+    { date: '2026-05-14', time: '16:00', inavPrice: '',      hynixPrice: '203400', fxRate: '0.00600', etfPrice: '10.35' },
+    { date: '2026-05-15', time: '09:30', inavPrice: '10.35', hynixPrice: '203500', fxRate: '0.00600', etfPrice: '10.36' },
+    { date: '2026-05-15', time: '10:30', inavPrice: '10.40', hynixPrice: '204000', fxRate: '0.00601', etfPrice: '10.55' }, // premium
+    { date: '2026-05-15', time: '13:30', inavPrice: '10.42', hynixPrice: '204200', fxRate: '0.00600', etfPrice: '10.43' },
+    { date: '2026-05-15', time: '14:30', inavPrice: '10.45', hynixPrice: '204500', fxRate: '0.00601', etfPrice: '10.44' },
+    { date: '2026-05-15', time: '15:30', inavPrice: '',      hynixPrice: '204600', fxRate: '0.00600', etfPrice: '10.62' },
+    { date: '2026-05-15', time: '16:00', inavPrice: '',      hynixPrice: '204800', fxRate: '0.00601', etfPrice: '10.50' },
 ];
 
-// Baseline fields (previous close)
-const BASELINE_INAV = [
-    { key: 'baseInavPrice', label: 'iNAV昨收', placeholder: '10.00' },
-    { key: 'baseEtfPrice', label: 'ETF昨收', placeholder: '10.00' },
-];
-
-const BASELINE_NO_INAV = [
-    { key: 'baseHynixPrice', label: '海力士昨收', placeholder: '200000' },
-    { key: 'baseFxRate', label: '汇率昨收', placeholder: '0.00600' },
-    { key: 'baseEtfPrice', label: 'ETF昨收', placeholder: '10.00' },
-];
-
-// Demo baseline values
-const DEMO_BASELINE_INAV = { baseInavPrice: '10.00', baseEtfPrice: '10.00' };
-const DEMO_BASELINE_NO_INAV = { baseHynixPrice: '200000', baseFxRate: '0.00600', baseEtfPrice: '10.00' };
-
-// Demo intraday data (today's prices, relative to baseline)
-const DEMO_DATA_INAV = [
-    { time: '09:30', inavPrice: '10.05', etfPrice: '10.06' },
-    { time: '09:35', inavPrice: '10.12', etfPrice: '10.10' },
-    { time: '09:40', inavPrice: '10.18', etfPrice: '10.35' },
-    { time: '09:45', inavPrice: '10.21', etfPrice: '10.23' },
-    { time: '09:50', inavPrice: '10.25', etfPrice: '10.24' },
-    { time: '09:55', inavPrice: '10.19', etfPrice: '10.02' },
-    { time: '10:00', inavPrice: '10.23', etfPrice: '10.22' },
-    { time: '10:05', inavPrice: '10.30', etfPrice: '10.48' },
-    { time: '10:10', inavPrice: '10.32', etfPrice: '10.33' },
-    { time: '10:15', inavPrice: '10.28', etfPrice: '10.29' },
-];
-
-const DEMO_DATA_NO_INAV = [
-    { time: '09:30', hynixPrice: '200500', fxRate: '0.00600', etfPrice: '10.06' },
-    { time: '09:35', hynixPrice: '201200', fxRate: '0.00599', etfPrice: '10.10' },
-    { time: '09:40', hynixPrice: '201800', fxRate: '0.00601', etfPrice: '10.35' },
-    { time: '09:45', hynixPrice: '202200', fxRate: '0.00600', etfPrice: '10.23' },
-    { time: '09:50', hynixPrice: '202600', fxRate: '0.00599', etfPrice: '10.24' },
-    { time: '09:55', hynixPrice: '202000', fxRate: '0.00600', etfPrice: '10.02' },
-    { time: '10:00', hynixPrice: '202400', fxRate: '0.00601', etfPrice: '10.22' },
-    { time: '10:05', hynixPrice: '203000', fxRate: '0.00600', etfPrice: '10.48' },
-    { time: '10:10', hynixPrice: '203200', fxRate: '0.00601', etfPrice: '10.33' },
-    { time: '10:15', hynixPrice: '202800', fxRate: '0.00600', etfPrice: '10.29' },
-];
-
-export function getColumns(mode) {
-    return mode === 'inav' ? COLUMNS_INAV : COLUMNS_NO_INAV;
+export function getColumns() {
+    return COLUMNS;
 }
 
-function getBaselineFields(mode) {
-    return mode === 'inav' ? BASELINE_INAV : BASELINE_NO_INAV;
-}
-
-function getDemoBaseline(mode) {
-    return mode === 'inav' ? DEMO_BASELINE_INAV : DEMO_BASELINE_NO_INAV;
-}
-
-function getDemoData(mode) {
-    return mode === 'inav' ? DEMO_DATA_INAV : DEMO_DATA_NO_INAV;
+function getDemoData() {
+    return DEMO_DATA;
 }
 
 /**
- * Render the baseline input fields.
+ * Render the baseline notice. Baselines are now derived automatically from the
+ * first row of each trading day, so this section only renders an informational
+ * tip; the previous explicit input fields are retired.
  */
-export function renderBaseline(container, mode) {
-    const fields = getBaselineFields(mode);
-    const demo = getDemoBaseline(mode);
-    const html = fields.map(f => `
-        <div class="baseline-item">
-            <label for="${f.key}">${f.label}</label>
-            <input type="number" id="${f.key}" data-key="${f.key}" placeholder="${f.placeholder}" step="any" value="${demo[f.key] || ''}">
+export function renderBaseline(container) {
+    container.innerHTML = `
+        <div class="baseline-notice">
+            <div class="baseline-notice-row"><strong>基准价格</strong>：自动取每个交易日<strong>第一行</strong>（通常为 09:30 开盘值），无需手动填写。</div>
+            <div class="baseline-notice-row"><strong>iNAV 来源</strong>：每行<strong>独立判断</strong>。</div>
+            <ul class="baseline-notice-list">
+                <li><span class="tag-truth">真 iNAV</span> 该行 <code>iNAV(HKD)</code> 列有值时直接使用，最准。建议从 BBG <code>7709IV HK Equity</code> 导出 09:30–14:30 的分钟数据。</li>
+                <li><span class="tag-shadow">影子 iNAV</span> 该行 <code>iNAV(HKD)</code> 留空、但 <code>海力士股价</code> 与 <code>汇率</code> 都有值时，系统按 <code>海力士涨跌% × 2 + 汇率涨跌%</code> 自动合成（用于覆盖 14:30 之后 BBG 停更的窗口）。</li>
+                <li><span class="tag-skip">跳过</span> 三者都不全的行不参与回测。</li>
+            </ul>
         </div>
-    `).join('');
-    container.innerHTML = html;
+    `;
 }
 
 /**
- * Render the intraday data table.
+ * Render the unified intraday data table.
  */
-export function renderTable(container, mode) {
-    const columns = getColumns(mode);
-    const demoData = getDemoData(mode);
+export function renderTable(container) {
     const html = `
         <table>
             <thead>
-                <tr>${columns.map(c => `<th>${c.label}</th>`).join('')}</tr>
+                <tr>${COLUMNS.map(c => `<th>${c.label}</th>`).join('')}</tr>
             </thead>
             <tbody id="data-tbody">
-                ${generateRowsWithData(columns, demoData)}
+                ${generateRowsWithData(DEMO_DATA)}
             </tbody>
         </table>
     `;
     container.innerHTML = html;
 }
 
-function generateRowsWithData(columns, dataRows) {
-    let rows = '';
-    for (const rowData of dataRows) {
-        rows += generateRowWithData(columns, rowData);
-    }
-    return rows;
+function generateRowsWithData(dataRows) {
+    return dataRows.map(rowData => generateRowWithData(rowData)).join('');
 }
 
-function generateRowWithData(columns, rowData) {
-    const cells = columns.map(c => {
+function generateRowWithData(rowData) {
+    const cells = COLUMNS.map(c => {
         const value = rowData && rowData[c.key] !== undefined ? rowData[c.key] : '';
         return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${value}"></td>`;
     }).join('');
     return `<tr>${cells}</tr>`;
 }
 
-function generateRow(columns) {
-    const cells = columns.map(c =>
+function generateRow() {
+    const cells = COLUMNS.map(c =>
         `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any"></td>`
     ).join('');
     return `<tr>${cells}</tr>`;
 }
 
-export function addRow(mode) {
+export function addRow() {
     const tbody = document.getElementById('data-tbody');
     if (!tbody) return;
-    const columns = getColumns(mode);
-    tbody.insertAdjacentHTML('beforeend', generateRow(columns));
+    tbody.insertAdjacentHTML('beforeend', generateRow());
 }
 
 export function deleteLastRow() {
@@ -147,161 +116,153 @@ export function deleteLastRow() {
     }
 }
 
-export function clearAll(mode) {
+export function clearAll() {
     const tableContainer = document.getElementById('data-table-container');
     const baselineContainer = document.getElementById('baseline-inputs');
-    if (tableContainer) renderTable(tableContainer, mode);
-    if (baselineContainer) renderBaseline(baselineContainer, mode);
+    if (tableContainer) renderTable(tableContainer);
+    if (baselineContainer) renderBaseline(baselineContainer);
 }
 
 /**
- * Read baseline values from the input fields.
+ * Read every input row from the table into raw entries, preserving order.
+ * Empty rows (no numeric values at all) are skipped.
  */
-function readBaseline(mode) {
-    const fields = getBaselineFields(mode);
-    const baseline = {};
-    for (const f of fields) {
-        const input = document.getElementById(f.key);
-        const val = input ? parseFloat(input.value) : null;
-        baseline[f.key] = isNaN(val) ? null : val;
-    }
-    return baseline;
-}
-
-/**
- * Parse raw price data and calculate changes relative to baseline (previous close).
- */
-export function parseData(mode) {
-    const baseline = readBaseline(mode);
+function readRows() {
     const tbody = document.getElementById('data-tbody');
     if (!tbody) return [];
-
-    const columns = getColumns(mode);
-    const rows = tbody.querySelectorAll('tr');
-    const data = [];
-
-    if (mode === 'inav') {
-        const baseInav = baseline.baseInavPrice;
-        const baseEtf = baseline.baseEtfPrice;
-
-        if (baseInav === null || baseEtf === null || baseInav === 0 || baseEtf === 0) {
-            return [];
-        }
-
-        for (const row of rows) {
-            const inputs = row.querySelectorAll('input');
-            const entry = {};
-            let hasValue = false;
-
-            inputs.forEach((input, i) => {
-                const key = columns[i].key;
-                if (columns[i].type === 'number') {
-                    const val = parseFloat(input.value);
-                    entry[key] = isNaN(val) ? null : val;
-                    if (!isNaN(val)) hasValue = true;
-                } else {
-                    entry[key] = input.value.trim();
-                }
-            });
-
-            if (!hasValue || entry.inavPrice === null || entry.etfPrice === null) continue;
-
-            const inavChange = ((entry.inavPrice - baseInav) / baseInav) * 100;
-            const etfChange = ((entry.etfPrice - baseEtf) / baseEtf) * 100;
-            const premiumDiscount = etfChange - inavChange;
-
-            data.push({
-                time: entry.time,
-                inavPrice: entry.inavPrice,
-                etfPrice: entry.etfPrice,
-                inavChange,
-                etfChange,
-                premiumDiscount,
-            });
-        }
-    } else {
-        // Mode B: no-inav
-        const baseHynix = baseline.baseHynixPrice;
-        const baseFx = baseline.baseFxRate;
-        const baseEtf = baseline.baseEtfPrice;
-
-        if (baseHynix === null || baseFx === null || baseEtf === null ||
-            baseHynix === 0 || baseFx === 0 || baseEtf === 0) {
-            return [];
-        }
-
-        for (const row of rows) {
-            const inputs = row.querySelectorAll('input');
-            const entry = {};
-            let hasValue = false;
-
-            inputs.forEach((input, i) => {
-                const key = columns[i].key;
-                if (columns[i].type === 'number') {
-                    const val = parseFloat(input.value);
-                    entry[key] = isNaN(val) ? null : val;
-                    if (!isNaN(val)) hasValue = true;
-                } else {
-                    entry[key] = input.value.trim();
-                }
-            });
-
-            if (!hasValue || entry.hynixPrice === null || entry.fxRate === null || entry.etfPrice === null) continue;
-
-            const hynixChange = ((entry.hynixPrice - baseHynix) / baseHynix) * 100;
-            const fxChange = ((entry.fxRate - baseFx) / baseFx) * 100;
-            const etfChange = ((entry.etfPrice - baseEtf) / baseEtf) * 100;
-
-            // Synthesize iNAV change: 2x Hynix change + FX impact
-            const syntheticInavChange = hynixChange * 2 + fxChange;
-            const premiumDiscount = etfChange - syntheticInavChange;
-
-            data.push({
-                time: entry.time,
-                hynixPrice: entry.hynixPrice,
-                fxRate: entry.fxRate,
-                etfPrice: entry.etfPrice,
-                hynixChange,
-                fxChange,
-                etfChange,
-                inavChange: syntheticInavChange,
-                premiumDiscount,
-            });
-        }
+    const out = [];
+    for (const tr of tbody.querySelectorAll('tr')) {
+        const inputs = tr.querySelectorAll('input');
+        const entry = {};
+        let hasNumeric = false;
+        inputs.forEach((input, i) => {
+            const col = COLUMNS[i];
+            if (!col) return;
+            if (col.type === 'number') {
+                const val = parseFloat(input.value);
+                entry[col.key] = isNaN(val) ? null : val;
+                if (!isNaN(val)) hasNumeric = true;
+            } else {
+                entry[col.key] = input.value.trim();
+            }
+        });
+        if (!hasNumeric) continue;
+        out.push(entry);
     }
-
-    return data;
+    return out;
 }
 
-export function validateData(data, mode) {
+/**
+ * Resolve a single day's rows into engine-ready records.
+ * Each output row carries:
+ *   - inavSource: 'truth' | 'shadow' (for downstream UI badges)
+ *   - The original prices kept for diagnostics.
+ */
+function resolveDay(date, rows) {
+    if (rows.length === 0) return [];
+    const base = rows[0];
+
+    // The day's anchor for iNAV-truth and synthetic-iNAV both come from the
+    // first row. We allow either path to anchor (whichever data the first row
+    // actually has). If the first row has an iNAV, we anchor truth there;
+    // we always anchor synthetic on Hynix+FX if those are present.
+    const baseInav = base.inavPrice;
+    const baseEtf = base.etfPrice;
+    const baseHynix = base.hynixPrice;
+    const baseFx = base.fxRate;
+    if (!baseEtf) return []; // ETF base is mandatory
+
+    const out = [];
+    for (const row of rows) {
+        if (row.etfPrice === null || row.etfPrice === undefined) continue;
+
+        const etfChange = ((row.etfPrice - baseEtf) / baseEtf) * 100;
+
+        let inavChange = null;
+        let inavSource = null;
+        if (row.inavPrice !== null && row.inavPrice !== undefined && baseInav) {
+            // Prefer the truth path whenever the row reports an iNAV.
+            inavChange = ((row.inavPrice - baseInav) / baseInav) * 100;
+            inavSource = 'truth';
+        } else if (row.hynixPrice !== null && row.hynixPrice !== undefined &&
+                   row.fxRate !== null && row.fxRate !== undefined &&
+                   baseHynix && baseFx) {
+            const hynixChange = ((row.hynixPrice - baseHynix) / baseHynix) * 100;
+            const fxChange = ((row.fxRate - baseFx) / baseFx) * 100;
+            inavChange = hynixChange * 2 + fxChange;
+            inavSource = 'shadow';
+        } else {
+            // Skip: cannot resolve iNAV for this row.
+            continue;
+        }
+
+        out.push({
+            date: date === '__single__' ? '' : date,
+            time: row.time,
+            inavPrice: row.inavPrice,
+            hynixPrice: row.hynixPrice,
+            fxRate: row.fxRate,
+            etfPrice: row.etfPrice,
+            inavChange,
+            etfChange,
+            premiumDiscount: etfChange - inavChange,
+            inavSource,
+        });
+    }
+    return out;
+}
+
+/**
+ * Parse the table into the engine-ready format.
+ *
+ * Multi-day aware: rows are grouped by `date`, and each group's first row is
+ * used as that day's baseline. Per-row iNAV is auto-resolved (truth → shadow
+ * → skip).
+ *
+ * Rows whose `date` is empty are bucketed under '__single__'.
+ *
+ * The `mode` parameter is accepted for backward compatibility but ignored.
+ */
+export function parseData(_mode) {
+    const raw = readRows();
+    if (raw.length === 0) return [];
+
+    const groups = new Map();
+    for (const row of raw) {
+        const key = row.date && row.date !== '' ? row.date : '__single__';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(row);
+    }
+
+    const out = [];
+    for (const [date, rows] of groups) {
+        out.push(...resolveDay(date, rows));
+    }
+    return out;
+}
+
+/**
+ * Validate the parsed data. Each detected day must contribute at least 2 valid
+ * rows (otherwise change-vs-baseline is meaningless).
+ *
+ * The `mode` parameter is accepted for backward compatibility but ignored.
+ */
+export function validateData(data, _mode) {
     const errors = [];
-    const baseline = readBaseline(mode);
-
-    // Validate baseline
-    if (mode === 'inav') {
-        if (baseline.baseInavPrice === null || baseline.baseInavPrice === 0) {
-            errors.push('基准价格：请输入iNAV昨收价');
-        }
-        if (baseline.baseEtfPrice === null || baseline.baseEtfPrice === 0) {
-            errors.push('基准价格：请输入ETF昨收价');
-        }
-    } else {
-        if (baseline.baseHynixPrice === null || baseline.baseHynixPrice === 0) {
-            errors.push('基准价格：请输入海力士昨收价');
-        }
-        if (baseline.baseFxRate === null || baseline.baseFxRate === 0) {
-            errors.push('基准价格：请输入汇率昨收');
-        }
-        if (baseline.baseEtfPrice === null || baseline.baseEtfPrice === 0) {
-            errors.push('基准价格：请输入ETF昨收价');
+    if (!data || data.length === 0) {
+        errors.push('请至少输入一行有效数据（每行至少填 ETF 市价 + iNAV 或 海力士股价+汇率）');
+        return errors;
+    }
+    const counts = new Map();
+    for (const row of data) {
+        const key = row.date || '__single__';
+        counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    for (const [date, c] of counts) {
+        if (c < 2) {
+            const label = date === '__single__' ? '（无日期）' : date;
+            errors.push(`日期 ${label} 仅 ${c} 行，至少需要 2 行（首行作为基准）`);
         }
     }
-
-    if (errors.length > 0) return errors;
-
-    if (data.length === 0) {
-        errors.push('请至少输入一行当日实时数据');
-    }
-
     return errors;
 }

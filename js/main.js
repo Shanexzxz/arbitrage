@@ -1,38 +1,10 @@
 // js/main.js
 
-import { renderTable, renderBaseline, addRow, deleteLastRow, clearAll, parseData, validateData } from './data-input.js';
-import { runBacktest, analyzeDivergence } from './backtest-engine.js';
+import { renderTable, renderBaseline, addRow, deleteLastRow, clearAll, parseData, validateData, getColumns } from './data-input.js';
+import { runBacktest, analyzeDivergence, findChartMarkers } from './backtest-engine.js';
 import { calculateStatistics } from './statistics.js';
 import { renderCharts, destroyCharts } from './charts.js';
 import { generateConclusion } from './conclusion.js';
-import { fetchAllData } from './yahoo-fetch.js';
-
-function getCurrentMode() {
-    const checked = document.querySelector('input[name="input-mode"]:checked');
-    return checked ? checked.value : 'inav';
-}
-
-function getCurrentDataSource() {
-    const checked = document.querySelector('input[name="data-source"]:checked');
-    return checked ? checked.value : 'api';
-}
-
-function toggleDataSource(source) {
-    const apiSection = document.getElementById('api-section');
-    const manualSection = document.getElementById('manual-section');
-    const tableSection = document.getElementById('data-table-section');
-
-    if (source === 'api') {
-        apiSection.classList.remove('hidden');
-        manualSection.classList.add('hidden');
-        // Hide table until data is fetched
-        tableSection.classList.add('hidden');
-    } else {
-        apiSection.classList.add('hidden');
-        manualSection.classList.remove('hidden');
-        tableSection.classList.remove('hidden');
-    }
-}
 
 function getParams() {
     return {
@@ -45,55 +17,14 @@ function getParams() {
 function init() {
     const container = document.getElementById('data-table-container');
     const baselineContainer = document.getElementById('baseline-inputs');
-    const mode = getCurrentMode();
-    const source = getCurrentDataSource();
 
     // Initial render
-    renderTickerInputs(mode);
-    renderBaseline(baselineContainer, mode);
-    renderTable(container, mode);
-    toggleDataSource(source);
-    updateHints();
-
-    // Data source switch (API vs Manual)
-    document.querySelectorAll('input[name="data-source"]').forEach(radio => {
-        radio.addEventListener('change', () => {
-            toggleDataSource(getCurrentDataSource());
-            updateHints();
-            setFetchStatus('');
-        });
-    });
-
-    // Calculation mode switch
-    document.querySelectorAll('input[name="input-mode"]').forEach(radio => {
-        radio.addEventListener('change', () => {
-            const newMode = getCurrentMode();
-            renderTickerInputs(newMode);
-            renderBaseline(baselineContainer, newMode);
-            renderTable(container, newMode);
-            updateHints();
-            setFetchStatus('');
-        });
-    });
-
-    // Fetch data button
-    document.getElementById('fetch-data-btn').addEventListener('click', () => {
-        handleFetchData();
-    });
-
-    // Data source provider switch (Yahoo / Alpha Vantage / etc.)
-    document.getElementById('data-source-provider').addEventListener('change', (e) => {
-        const tokenInput = document.getElementById('api-token');
-        if (e.target.value === 'yahoo') {
-            tokenInput.classList.add('hidden');
-        } else {
-            tokenInput.classList.remove('hidden');
-        }
-    });
+    renderBaseline(baselineContainer);
+    renderTable(container);
 
     // Table action buttons
     document.getElementById('add-row-btn').addEventListener('click', () => {
-        addRow(getCurrentMode());
+        addRow();
     });
 
     document.getElementById('delete-row-btn').addEventListener('click', () => {
@@ -102,7 +33,21 @@ function init() {
 
     document.getElementById('clear-all-btn').addEventListener('click', () => {
         if (confirm('确认清空所有数据？')) {
-            clearAll(getCurrentMode());
+            clearAll();
+            setBtImportStatus('');
+        }
+    });
+
+    // Backtest Excel import / template download
+    document.getElementById('bt-download-tpl').addEventListener('click', () => {
+        downloadBacktestTemplate();
+    });
+    const btFileInput = document.getElementById('bt-file-input');
+    document.getElementById('bt-import').addEventListener('click', () => btFileInput.click());
+    btFileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            importBacktestFile(e.target.files[0]);
+            e.target.value = '';
         }
     });
 
@@ -149,15 +94,14 @@ function init() {
 }
 
 function executeBacktest() {
-    const mode = getCurrentMode();
-    const data = parseData(mode);
+    const data = parseData();
 
     if (data.length === 0) {
         alert('请先输入数据（至少需要一行有效数据）');
         return;
     }
 
-    const errors = validateData(data, mode);
+    const errors = validateData(data);
     if (errors.length > 0) {
         alert('数据校验失败:\n' + errors.join('\n'));
         return;
@@ -165,8 +109,11 @@ function executeBacktest() {
 
     const params = getParams();
 
+    // Analyze divergence (used by both dashboard and stats panel)
+    const analysis = analyzeDivergence(data, params.threshold);
+
     // Show and render dashboard
-    renderDashboard(data, params.threshold);
+    renderDashboard(data, params.threshold, analysis);
 
     // Run backtest engine
     const trades = runBacktest(data, params);
@@ -174,8 +121,7 @@ function executeBacktest() {
     // Calculate results
     const totalProfitHKD = trades.reduce((s, t) => s + t.profitHKD, 0);
     const profitableTrades = trades.filter(t => t.netProfit > 0);
-    const beforeTrades = trades.filter(t => t.entryTime && t.entryTime <= '14:30');
-    const afterTrades = trades.filter(t => t.entryTime && t.entryTime > '14:30');
+    const dayCount = analysis.byDate.length;
 
     // Show results section
     const resultsSection = document.getElementById('backtest-results');
@@ -187,8 +133,9 @@ function executeBacktest() {
         totalTrades: trades.length,
         profitableTrades: profitableTrades.length,
         avgProfit: trades.length > 0 ? totalProfitHKD / trades.length : 0,
-        beforeCount: beforeTrades.length,
-        afterCount: afterTrades.length,
+        beforeCount: analysis.before.signalCount,
+        afterCount: analysis.after.signalCount,
+        dayCount,
     });
 
     // Render charts
@@ -196,6 +143,7 @@ function executeBacktest() {
     renderCharts(data, trades);
 
     // Render trade log
+    renderByDate(trades, analysis);
     renderTradeLog(trades);
 
     // Generate and show conclusion
@@ -207,12 +155,13 @@ function executeBacktest() {
 function renderStatsPanel(stats) {
     const panel = document.getElementById('stats-panel');
     const items = [
+        { label: '覆盖天数', value: `${stats.dayCount} 天`, hint: '回测数据涉及的交易日数' },
         { label: '总套利收益', value: `${stats.totalProfitHKD.toFixed(0)} HKD`, hint: '所有调仓交易的累计净收益' },
         { label: '信号触发', value: `${stats.totalTrades} 次`, hint: '背离超阈值的调仓次数' },
         { label: '有效交易', value: `${stats.profitableTrades} 次`, hint: '扣除费用后仍盈利的交易' },
         { label: '平均单次收益', value: `${stats.avgProfit.toFixed(0)} HKD`, hint: '总收益 / 交易次数' },
-        { label: '14:30前信号', value: `${stats.beforeCount} 次`, hint: 'iNAV实时更新期间的信号' },
-        { label: '14:30后信号', value: `${stats.afterCount} 次`, hint: 'iNAV冻结后的信号（信息优势窗口）' },
+        { label: '14:30前信号', value: `${stats.beforeCount} 次`, hint: 'iNAV实时更新期间的信号（多日累计）' },
+        { label: '14:30后信号', value: `${stats.afterCount} 次`, hint: 'iNAV冻结后的信号（信息优势窗口，多日累计）' },
     ];
 
     panel.innerHTML = items.map(item => `
@@ -222,6 +171,69 @@ function renderStatsPanel(stats) {
             <div class="stat-hint">${item.hint}</div>
         </div>
     `).join('');
+}
+
+function renderByDate(trades, analysis) {
+    const container = document.getElementById('by-date-container');
+    const title = document.getElementById('by-date-title');
+    if (!container) return;
+
+    // Single-day data: hide the by-date section entirely.
+    const real = analysis.byDate.filter(d => d.date && d.date !== '__single__');
+    if (real.length <= 1) {
+        title?.classList.add('hidden');
+        container.innerHTML = '';
+        return;
+    }
+    title?.classList.remove('hidden');
+
+    // Aggregate trades per date
+    const tradesByDate = new Map();
+    for (const t of trades) {
+        const key = t.date || '__single__';
+        if (!tradesByDate.has(key)) tradesByDate.set(key, []);
+        tradesByDate.get(key).push(t);
+    }
+
+    const rows = real.map(day => {
+        const tList = tradesByDate.get(day.date) || [];
+        const dayPnl = tList.reduce((s, t) => s + t.profitHKD, 0);
+        const wins = tList.filter(t => t.netProfit > 0).length;
+        const winRate = tList.length > 0 ? (wins / tList.length) * 100 : 0;
+        const pnlColor = dayPnl >= 0 ? '#16a34a' : '#dc2626';
+        return `
+            <tr>
+                <td>${day.date}</td>
+                <td>${day.count}</td>
+                <td>${day.signalCount}</td>
+                <td>${tList.length}</td>
+                <td>${wins} / ${tList.length} (${winRate.toFixed(0)}%)</td>
+                <td style="color:#dc2626">${day.maxPremium.toFixed(2)}%</td>
+                <td style="color:#2563eb">${day.maxDiscount.toFixed(2)}%</td>
+                <td>${day.avgAbs.toFixed(2)}%</td>
+                <td style="color:${pnlColor}; font-weight:600">${dayPnl.toFixed(0)} HKD</td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>数据点</th>
+                    <th>超阈值</th>
+                    <th>交易数</th>
+                    <th>胜率</th>
+                    <th>最大溢价</th>
+                    <th>最大折价</th>
+                    <th>平均|偏离|</th>
+                    <th>当日收益</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
 }
 
 function renderTradeLog(trades) {
@@ -235,6 +247,7 @@ function renderTradeLog(trades) {
     const rows = trades.map((t, i) => `
         <tr>
             <td>${i + 1}</td>
+            <td>${t.date && t.date !== '__single__' ? t.date : '-'}</td>
             <td>${t.entryTime || t.entryIndex}</td>
             <td>${t.exitTime || t.exitIndex}</td>
             <td>${t.direction === 'sell_etf_buy_stock' ? '卖ETF/买股票' : '买ETF/卖股票'}</td>
@@ -250,6 +263,7 @@ function renderTradeLog(trades) {
             <thead>
                 <tr>
                     <th>#</th>
+                    <th>日期</th>
                     <th>调仓时间</th>
                     <th>回归时间</th>
                     <th>方向</th>
@@ -268,6 +282,7 @@ function formatExitReason(reason) {
     const map = {
         'reversion': '背离回归',
         'cross_zero': '穿越零轴',
+        'end_of_day': '当日收盘',
         'end_of_data': '数据结束',
     };
     return map[reason] || reason;
@@ -299,145 +314,199 @@ function renderConclusion(conclusion) {
     `;
 }
 
-// ===== Yahoo Finance Ticker Config =====
+// ===== Backtest: Excel/CSV import & template =====
 
-const TICKER_FIELDS_INAV = [
-    { key: 'etf', label: 'ETF代码（港股）', placeholder: '7709.HK', defaultValue: '7709.HK' },
-    { key: 'hynix', label: '海力士股票代码', placeholder: '000660.KS', defaultValue: '000660.KS' },
-];
-
-const TICKER_FIELDS_NO_INAV = [
-    { key: 'etf', label: 'ETF代码（港股）', placeholder: '7709.HK', defaultValue: '7709.HK' },
-    { key: 'hynix', label: '海力士股票代码', placeholder: '000660.KS', defaultValue: '000660.KS' },
-    { key: 'fx', label: '汇率', placeholder: 'KRWHKD=X', defaultValue: 'KRWHKD=X' },
-];
-
-function renderTickerInputs(mode) {
-    const container = document.getElementById('ticker-inputs');
-    const fields = mode === 'inav' ? TICKER_FIELDS_INAV : TICKER_FIELDS_NO_INAV;
-
-    container.innerHTML = fields.map(f => `
-        <div class="ticker-item">
-            <label for="ticker-${f.key}">${f.label}</label>
-            <input type="text" id="ticker-${f.key}" placeholder="${f.placeholder}" value="${f.defaultValue}">
-        </div>
-    `).join('');
-}
-
-function getTickerValues(mode) {
-    const fields = mode === 'inav' ? TICKER_FIELDS_INAV : TICKER_FIELDS_NO_INAV;
-    const tickers = {};
-    for (const f of fields) {
-        const input = document.getElementById(`ticker-${f.key}`);
-        tickers[f.key] = input ? input.value.trim() : '';
-    }
-    return tickers;
-}
-
-function setFetchStatus(text, type = '') {
-    const el = document.getElementById('fetch-status');
+function setBtImportStatus(text, type = '') {
+    const el = document.getElementById('bt-import-status');
+    if (!el) return;
     el.textContent = text;
     el.className = 'fetch-status ' + type;
 }
 
-async function handleFetchData() {
-    const mode = getCurrentMode();
-    const tickers = getTickerValues(mode);
-    const provider = document.getElementById('data-source-provider').value;
-
-    // Validate tickers
-    const requiredKeys = mode === 'inav' ? ['etf', 'hynix'] : ['etf', 'hynix', 'fx'];
-    const emptyFields = requiredKeys.filter(k => !tickers[k]);
-    if (emptyFields.length > 0) {
-        setFetchStatus('请填写所有代码', 'error');
-        return;
-    }
-
-    // Check provider + mode compatibility
-    if (mode === 'inav' && provider === 'yahoo') {
-        setFetchStatus('Yahoo Finance 不提供 iNAV 数据，请切换为「系统计算 iNAV」或更换数据源', 'error');
-        return;
-    }
-
-    setFetchStatus('正在获取数据...', 'loading');
-
-    try {
-        // Build fetch tickers based on mode
-        const fetchTickers = {
-            hynix: tickers.hynix,
-            fx: tickers.fx || 'KRWHKD=X',
-            etf: tickers.etf,
-        };
-
-        const { baseline, rows } = await fetchAllData(fetchTickers, 'no-inav');
-
-        // Fill baseline inputs
-        for (const [key, value] of Object.entries(baseline)) {
-            const input = document.getElementById(key);
-            if (input && value != null) {
-                input.value = value;
-            }
-        }
-
-        // Fill table with fetched rows
-        fillTableWithFetchedData(mode, rows);
-
-        // Show table section after successful fetch
-        document.getElementById('data-table-section').classList.remove('hidden');
-
-        setFetchStatus(`已获取 ${rows.length} 条数据`, 'success');
-    } catch (error) {
-        setFetchStatus(`获取失败: ${error.message}`, 'error');
-        console.error('Fetch error:', error);
-    }
+/**
+ * Build the column definition used by the unified backtest data table.
+ * 6 columns: 日期 | 时间 | iNAV(HKD) | 海力士股价(KRW) | KRW/HKD汇率 | ETF市价(HKD)
+ *
+ * Per-row iNAV resolution (truth → shadow → skip) happens in data-input.parseData.
+ */
+function getBacktestExportColumns() {
+    return [
+        { label: '日期',           placeholder: 'YYYY-MM-DD' },
+        { label: '时间',           placeholder: 'HH:MM' },
+        { label: 'iNAV(HKD)',      placeholder: '14:30前' },
+        { label: '海力士股价(KRW)', placeholder: '201000' },
+        { label: 'KRW/HKD汇率',    placeholder: '0.00600' },
+        { label: 'ETF市价(HKD)',   placeholder: '10.15' },
+    ];
 }
 
-function fillTableWithFetchedData(mode, rows) {
-    const container = document.getElementById('data-table-container');
-    const columns = mode === 'inav'
-        ? [{ key: 'time' }, { key: 'inavPrice' }, { key: 'etfPrice' }]
-        : [{ key: 'time' }, { key: 'hynixPrice' }, { key: 'fxPrice' }, { key: 'etfPrice' }];
-
-    // Map fxPrice to fxRate for table compatibility
-    const mappedRows = rows.map(row => ({
-        ...row,
-        fxRate: row.fxPrice || row.fxRate,
-    }));
-
-    // Rebuild table with fetched data
-    const { getColumns } = { getColumns: (m) => m === 'inav'
-        ? [
-            { key: 'time', label: '时间', type: 'text', placeholder: 'e.g. 09:30' },
-            { key: 'inavPrice', label: 'iNAV', type: 'number', placeholder: '10.12' },
-            { key: 'etfPrice', label: 'ETF市价', type: 'number', placeholder: '10.15' },
-          ]
-        : [
-            { key: 'time', label: '时间', type: 'text', placeholder: 'e.g. 09:30' },
-            { key: 'hynixPrice', label: '海力士股价', type: 'number', placeholder: '201000' },
-            { key: 'fxRate', label: 'KRW/HKD汇率', type: 'number', placeholder: '0.00600' },
-            { key: 'etfPrice', label: 'ETF市价', type: 'number', placeholder: '10.15' },
-          ]
+function downloadBacktestTemplate() {
+    const cols = getBacktestExportColumns();
+    // Three consecutive trading-day-ish dates ending today.
+    const dayStr = (offsetDays) => {
+        const d = new Date();
+        d.setDate(d.getDate() - offsetDays);
+        return d.toISOString().slice(0, 10);
     };
+    const d2 = dayStr(2), d1 = dayStr(1), d0 = dayStr(0);
+    // Each day shows the recommended pattern:
+    //   - 09:30 / 10:30 / 13:30 / 14:30 -> all columns filled (iNAV from BBG)
+    //   - 15:30 / 16:00 -> iNAV blank, Hynix+FX filled (system uses shadow iNAV)
+    const sampleRows = [
+        [d2, '09:30', '10.00', '200000', '0.00600', '10.00'],
+        [d2, '10:30', '10.10', '201000', '0.00600', '10.28'],
+        [d2, '13:30', '10.15', '201500', '0.00601', '10.16'],
+        [d2, '14:30', '10.20', '202000', '0.00601', '10.19'],
+        [d2, '15:30', '',      '202200', '0.00600', '10.40'],
+        [d2, '16:00', '',      '202300', '0.00601', '10.25'],
+        [d1, '09:30', '10.25', '202500', '0.00600', '10.25'],
+        [d1, '10:30', '10.32', '203200', '0.00601', '10.10'],
+        [d1, '13:30', '10.30', '203000', '0.00600', '10.32'],
+        [d1, '14:30', '10.31', '203100', '0.00601', '10.30'],
+        [d1, '15:30', '',      '203300', '0.00601', '10.34'],
+        [d1, '16:00', '',      '203400', '0.00600', '10.35'],
+        [d0, '09:30', '10.35', '203500', '0.00600', '10.36'],
+        [d0, '10:30', '10.40', '204000', '0.00601', '10.55'],
+        [d0, '13:30', '10.42', '204200', '0.00600', '10.43'],
+        [d0, '14:30', '10.45', '204500', '0.00601', '10.44'],
+        [d0, '15:30', '',      '204600', '0.00600', '10.62'],
+        [d0, '16:00', '',      '204800', '0.00601', '10.50'],
+    ];
 
-    const cols = getColumns(mode);
-    const tableRows = mappedRows.map(row => {
-        const cells = cols.map(c => {
-            const val = row[c.key] !== undefined ? row[c.key] : '';
-            return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${val}"></td>`;
-        }).join('');
-        return `<tr>${cells}</tr>`;
-    }).join('');
+    const header = cols.map(c => c.label);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...sampleRows]);
+    ws['!cols'] = cols.map(() => ({ wch: 15 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '回测数据');
+    XLSX.writeFile(wb, 'backtest_template.xlsx');
+}
 
-    container.innerHTML = `
-        <table>
-            <thead>
-                <tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr>
-            </thead>
-            <tbody id="data-tbody">
-                ${tableRows}
-            </tbody>
-        </table>
-    `;
+/**
+ * Import an Excel/CSV into the unified backtest data table.
+ * Expected columns: 日期 | 时间 | iNAV(HKD) | 海力士股价(KRW) | KRW/HKD汇率 | ETF市价(HKD)
+ *
+ * - Multi-day is fully supported (engine groups by date and computes per-day baselines).
+ * - Empty 日期 rows are bucketed into a synthetic single-day group.
+ * - Empty iNAV cells are normal: parseData() falls back to shadow iNAV per row.
+ * - Backward-compatible with the legacy 5-column "no-iNAV" template
+ *   (日期 | 时间 | 海力士 | 汇率 | ETF) — detected by the header row.
+ */
+function importBacktestFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array', cellDates: false });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+            if (rows.length === 0) {
+                setBtImportStatus('文件中没有数据', 'error');
+                return;
+            }
+
+            // Detect legacy layout by inspecting header row.
+            // Modern: 6 cols, header[2] contains "iNAV"
+            // Legacy iNAV-only: header[2] contains "iNAV", header.length === 4
+            // Legacy no-iNAV: header[2] contains "海力士", header.length === 5
+            const header = rows[0].map(h => String(h ?? ''));
+            const colCount = header.length;
+            const headerHasInav = /iNAV/i.test(header[2] || '');
+            const headerHasHynix = /海力士|hynix/i.test(header[2] || '');
+
+            const dataRows = rows.slice(1).filter(r =>
+                r && r.length > 1 && r[1] !== undefined && r[1] !== null && String(r[1]).trim() !== ''
+            );
+            if (dataRows.length === 0) {
+                setBtImportStatus('文件中没有有效数据', 'error');
+                return;
+            }
+
+            // Map each raw row to the 6-column entry shape used by the table.
+            const mapRow = (r) => {
+                const date = normalizeDate(r[0]);
+                const time = normalizeTime(r[1]);
+                const v = (i) => (r[i] != null && r[i] !== '' ? String(r[i]) : '');
+                if (colCount >= 6 || (headerHasInav && colCount > 4)) {
+                    // Modern 6-column layout
+                    return { date, time, inavPrice: v(2), hynixPrice: v(3), fxRate: v(4), etfPrice: v(5) };
+                }
+                if (headerHasInav) {
+                    // Legacy: 日期 | 时间 | iNAV | ETF
+                    return { date, time, inavPrice: v(2), hynixPrice: '', fxRate: '', etfPrice: v(3) };
+                }
+                if (headerHasHynix) {
+                    // Legacy: 日期 | 时间 | 海力士 | 汇率 | ETF
+                    return { date, time, inavPrice: '', hynixPrice: v(2), fxRate: v(3), etfPrice: v(4) };
+                }
+                // Unknown: treat as modern layout best-effort
+                return { date, time, inavPrice: v(2), hynixPrice: v(3), fxRate: v(4), etfPrice: v(5) };
+            };
+
+            const cols = getColumns();
+            const tbody = document.getElementById('data-tbody');
+            const html = dataRows.map(r => {
+                const entry = mapRow(r);
+                const cells = cols.map(c => {
+                    const value = entry[c.key] !== undefined ? entry[c.key] : '';
+                    return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${value}"></td>`;
+                }).join('');
+                return `<tr>${cells}</tr>`;
+            }).join('');
+            tbody.innerHTML = html;
+
+            const uniqueDates = new Set(
+                dataRows.map(r => normalizeDate(r[0])).filter(d => d !== '')
+            );
+            const dayCount = uniqueDates.size;
+            const layoutHint = (colCount < 6 && (headerHasInav || headerHasHynix))
+                ? '（旧版模板已自动适配）'
+                : '';
+            if (dayCount > 1) {
+                setBtImportStatus(`已导入 ${dataRows.length} 行，覆盖 ${dayCount} 个交易日 ${layoutHint}`, 'success');
+            } else if (dayCount === 1) {
+                setBtImportStatus(`已导入 ${dataRows.length} 行（${[...uniqueDates][0]}）${layoutHint}`, 'success');
+            } else {
+                setBtImportStatus(`已导入 ${dataRows.length} 行（无日期列，按单日处理）${layoutHint}`, 'success');
+            }
+        } catch (err) {
+            setBtImportStatus('文件解析失败: ' + err.message, 'error');
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+/**
+ * Normalize a date cell into 'YYYY-MM-DD'.
+ * Excel may give a date as a serial number (e.g. 45797), an ISO string, or
+ * simply 'YYYY/MM/DD' / 'YYYY-MM-DD'. We coerce all three to ISO form.
+ */
+function normalizeDate(cell) {
+    if (cell == null || cell === '') return '';
+    if (typeof cell === 'number') {
+        // SSF.format converts an Excel serial date to a string
+        try {
+            const formatted = XLSX.SSF.format('yyyy-mm-dd', cell);
+            return String(formatted);
+        } catch {
+            return '';
+        }
+    }
+    const s = String(cell).trim();
+    // Convert '2026/05/13' -> '2026-05-13'; leave already-ISO strings intact.
+    return s.replace(/\//g, '-');
+}
+
+function normalizeTime(cell) {
+    if (cell == null || cell === '') return '';
+    // Excel sometimes stores 'HH:MM' as a fraction of a day; coerce.
+    if (typeof cell === 'number' && cell >= 0 && cell < 1) {
+        try {
+            return XLSX.SSF.format('hh:mm', cell);
+        } catch {
+            // fall through
+        }
+    }
+    return String(cell).trim();
 }
 
 // ===== Price Monitor Section =====
@@ -864,11 +933,13 @@ function renderMonitorCharts() {
 
 let divergenceChart = null;
 
-function renderDashboard(data, threshold) {
+function renderDashboard(data, threshold, analysis) {
     const dashboard = document.getElementById('dashboard');
     dashboard.classList.remove('hidden');
 
-    const analysis = analyzeDivergence(data, threshold);
+    if (!analysis) {
+        analysis = analyzeDivergence(data, threshold);
+    }
 
     // Render divergence chart
     renderDivergenceChart(data, threshold);
@@ -878,15 +949,30 @@ function renderDashboard(data, threshold) {
     renderPeriodStats('after-stats', analysis.after, threshold);
 }
 
+/**
+ * Build human-friendly X-axis labels for chart.
+ * - Single day: 'HH:MM'
+ * - Multi day:  'MM-DD HH:MM'
+ */
+function buildAxisLabels(data) {
+    const dates = new Set(data.map(d => d.date || '').filter(Boolean));
+    const multiDay = dates.size > 1;
+    return data.map(d => {
+        const time = d.time || '';
+        if (!multiDay || !d.date) return time;
+        // 'YYYY-MM-DD' -> 'MM-DD'
+        const md = d.date.length >= 10 ? d.date.slice(5) : d.date;
+        return `${md} ${time}`;
+    });
+}
+
 function renderDivergenceChart(data, threshold) {
     const ctx = document.getElementById('divergence-chart').getContext('2d');
     if (divergenceChart) divergenceChart.destroy();
 
-    const labels = data.map((d, i) => d.time || `${i}`);
+    const labels = buildAxisLabels(data);
     const premiums = data.map(d => d.premiumDiscount);
-
-    // Find 14:30 cutoff index
-    const cutoffIndex = data.findIndex(d => d.time && d.time > '14:30');
+    const { dayBoundaries, cutoffIndices } = findChartMarkers(data);
 
     divergenceChart = new Chart(ctx, {
         type: 'line',
@@ -920,47 +1006,62 @@ function renderDivergenceChart(data, threshold) {
             },
         },
         plugins: [{
-            id: 'thresholdLines',
+            id: 'thresholdAndMarkers',
             afterDraw(chart) {
                 const { ctx, chartArea, scales } = chart;
                 const yScale = scales.y;
                 const xScale = scales.x;
 
-                // Draw threshold lines
                 ctx.save();
+
+                // Threshold horizontal lines
                 ctx.setLineDash([5, 5]);
                 ctx.strokeStyle = '#dc2626';
                 ctx.lineWidth = 1;
-
                 const yTop = yScale.getPixelForValue(threshold);
                 const yBottom = yScale.getPixelForValue(-threshold);
-
                 ctx.beginPath();
                 ctx.moveTo(chartArea.left, yTop);
                 ctx.lineTo(chartArea.right, yTop);
                 ctx.stroke();
-
                 ctx.beginPath();
                 ctx.moveTo(chartArea.left, yBottom);
                 ctx.lineTo(chartArea.right, yBottom);
                 ctx.stroke();
 
-                // Draw 14:30 vertical line
-                if (cutoffIndex > 0) {
-                    ctx.setLineDash([4, 4]);
-                    ctx.strokeStyle = '#ca8a04';
-                    ctx.lineWidth = 1.5;
-                    const xPos = xScale.getPixelForValue(cutoffIndex);
+                // Per-day cutoff (14:30) lines
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = '#ca8a04';
+                ctx.lineWidth = 1.5;
+                for (const idx of cutoffIndices) {
+                    const xPos = xScale.getPixelForValue(idx);
                     ctx.beginPath();
                     ctx.moveTo(xPos, chartArea.top);
                     ctx.lineTo(xPos, chartArea.bottom);
                     ctx.stroke();
+                }
 
-                    // Label
-                    ctx.setLineDash([]);
+                // Day boundary solid lines (multi-day only)
+                ctx.setLineDash([]);
+                ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
+                ctx.lineWidth = 1;
+                for (const idx of dayBoundaries) {
+                    const xPos = xScale.getPixelForValue(idx);
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, chartArea.top);
+                    ctx.lineTo(xPos, chartArea.bottom);
+                    ctx.stroke();
+                }
+
+                // Label the first cutoff (avoid clutter when many days)
+                if (cutoffIndices.length > 0) {
                     ctx.fillStyle = '#ca8a04';
                     ctx.font = '11px sans-serif';
-                    ctx.fillText('14:30 iNAV冻结', xPos + 4, chartArea.top + 14);
+                    const xPos = xScale.getPixelForValue(cutoffIndices[0]);
+                    const labelText = cutoffIndices.length > 1
+                        ? `14:30 iNAV冻结 (×${cutoffIndices.length})`
+                        : '14:30 iNAV冻结';
+                    ctx.fillText(labelText, xPos + 4, chartArea.top + 14);
                 }
 
                 ctx.restore();
@@ -977,52 +1078,6 @@ function renderPeriodStats(containerId, stats, threshold) {
         <div class="mini-stat"><div class="val">${stats.signalCount}</div><div class="lbl">超阈值次数</div></div>
         <div class="mini-stat"><div class="val">${stats.avgAbs.toFixed(2)}%</div><div class="lbl">平均|偏离|</div></div>
     `;
-}
-
-function updateHints() {
-    const mode = getCurrentMode();
-    const source = getCurrentDataSource();
-
-    const modeHint = document.getElementById('mode-hint');
-    const sourceHint = document.getElementById('source-hint');
-
-    if (mode === 'inav') {
-        modeHint.textContent = '数据源直接提供 iNAV 时选此项（如 Bloomberg 7709IV Index），系统仅对比 iNAV 与 ETF 市价';
-    } else {
-        modeHint.textContent = '无 iNAV 数据源时选此项，系统用海力士股价×2 + 汇率变动自动合成 iNAV';
-    }
-
-    if (source === 'api') {
-        sourceHint.textContent = '通过 API 自动获取实时行情数据';
-    } else {
-        sourceHint.textContent = '手动填入基准价格（昨收）和当日实时价格数据';
-    }
-
-    // Disable/enable Yahoo Finance based on mode
-    updateProviderAvailability(mode);
-}
-
-function updateProviderAvailability(mode) {
-    const select = document.getElementById('data-source-provider');
-    const tokenInput = document.getElementById('api-token');
-    if (!select) return;
-
-    const yahooOption = select.querySelector('option[value="yahoo"]');
-    if (mode === 'inav') {
-        yahooOption.disabled = true;
-        yahooOption.textContent = 'Yahoo Finance（不支持 iNAV，请选其他数据源）';
-        // If yahoo is currently selected, auto-switch to first available alternative
-        if (select.value === 'yahoo') {
-            select.value = 'alphavantage';
-            tokenInput.classList.remove('hidden');
-        }
-    } else {
-        yahooOption.disabled = false;
-        yahooOption.textContent = 'Yahoo Finance（免费，无需Token）';
-        // Auto-switch back to Yahoo when switching to system-calculated mode
-        select.value = 'yahoo';
-        tokenInput.classList.add('hidden');
-    }
 }
 
 document.addEventListener('DOMContentLoaded', init);

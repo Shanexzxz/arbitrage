@@ -1,5 +1,7 @@
 // js/charts.js
 
+import { findChartMarkers } from './backtest-engine.js';
+
 let equityChart = null;
 let premiumChart = null;
 let pnlChart = null;
@@ -22,15 +24,38 @@ export function destroyCharts() {
     if (pnlChart) { pnlChart.destroy(); pnlChart = null; }
 }
 
+/**
+ * Build axis labels for chart 2 (per-row premium chart).
+ * Single day -> 'HH:MM'; multi day -> 'MM-DD HH:MM'.
+ */
+function buildAxisLabels(data) {
+    const dates = new Set(data.map(d => d.date || '').filter(Boolean));
+    const multiDay = dates.size > 1;
+    return data.map(d => {
+        const time = d.time || '';
+        if (!multiDay || !d.date) return time;
+        const md = d.date.length >= 10 ? d.date.slice(5) : d.date;
+        return `${md} ${time}`;
+    });
+}
+
 function renderEquityChart(trades) {
     const ctx = document.getElementById('equity-chart').getContext('2d');
     if (equityChart) equityChart.destroy();
 
-    const labels = ['Start', ...trades.map((t, i) => t.exitTime || `Trade ${i + 1}`)];
+    // Use 'date time' for label when multi-day so the curve is readable.
+    const dates = new Set(trades.map(t => t.date || '').filter(d => d && d !== '__single__'));
+    const multiDay = dates.size > 1;
+    const labels = ['Start', ...trades.map((t, i) => {
+        if (!t.exitTime) return `Trade ${i + 1}`;
+        if (!multiDay || !t.date || t.date === '__single__') return t.exitTime;
+        const md = t.date.length >= 10 ? t.date.slice(5) : t.date;
+        return `${md} ${t.exitTime}`;
+    })];
     const cumulative = [0];
     let sum = 0;
     for (const trade of trades) {
-        sum += trade.pnl;
+        sum += (trade.netProfit !== undefined ? trade.netProfit : trade.pnl) || 0;
         cumulative.push(sum);
     }
 
@@ -61,8 +86,9 @@ function renderPremiumChart(data, trades) {
     const ctx = document.getElementById('premium-chart').getContext('2d');
     if (premiumChart) premiumChart.destroy();
 
-    const labels = data.map((d, i) => d.time || `${i}`);
+    const labels = buildAxisLabels(data);
     const premiums = data.map(d => d.premiumDiscount);
+    const { dayBoundaries, cutoffIndices } = findChartMarkers(data);
 
     // Mark entry/exit points
     const entryPoints = new Array(data.length).fill(null);
@@ -112,6 +138,40 @@ function renderPremiumChart(data, trades) {
                 y: { title: { display: true, text: '溢价率 (%)' } },
             },
         },
+        plugins: [{
+            id: 'premiumDayMarkers',
+            afterDraw(chart) {
+                const { ctx, chartArea, scales } = chart;
+                const xScale = scales.x;
+                ctx.save();
+
+                // Per-day 14:30 cutoffs (dashed amber)
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = 'rgba(202, 138, 4, 0.7)';
+                ctx.lineWidth = 1;
+                for (const idx of cutoffIndices) {
+                    const xPos = xScale.getPixelForValue(idx);
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, chartArea.top);
+                    ctx.lineTo(xPos, chartArea.bottom);
+                    ctx.stroke();
+                }
+
+                // Day boundaries (light grey solid)
+                ctx.setLineDash([]);
+                ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
+                ctx.lineWidth = 1;
+                for (const idx of dayBoundaries) {
+                    const xPos = xScale.getPixelForValue(idx);
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, chartArea.top);
+                    ctx.lineTo(xPos, chartArea.bottom);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+        }],
     });
 }
 
@@ -120,7 +180,7 @@ function renderPnlHistogram(trades) {
     if (pnlChart) pnlChart.destroy();
 
     const labels = trades.map((t, i) => `#${i + 1}`);
-    const pnls = trades.map(t => t.pnl);
+    const pnls = trades.map(t => (t.netProfit !== undefined ? t.netProfit : t.pnl) || 0);
     const colors = pnls.map(p => p >= 0 ? 'rgba(22, 163, 74, 0.7)' : 'rgba(220, 38, 38, 0.7)');
 
     pnlChart = new Chart(ctx, {

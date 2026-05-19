@@ -13,8 +13,8 @@
     <nav class="sidebar">
         <div class="nav-brand">ETF 套利回测</div>
         <div class="nav-links">
-            <a href="#price-monitor">价格监控</a>
-            <a href="#data-input">数据输入</a>
+            <a href="#price-monitor">实时盯盘</a>
+            <a href="#data-input">历史回测</a>
             <a href="#strategy-params">策略参数</a>
             <a href="#indicator-guide">指标说明</a>
             <a href="#bbg-guide">BBG指南</a>
@@ -31,7 +31,8 @@
 
         <!-- Top Charts: Price Tracking & Shadow iNAV Validation -->
         <section id="price-monitor" class="block">
-            <h2>价格监控</h2>
+            <h2>实时盯盘 <span class="section-tag tag-live">当天</span></h2>
+            <p class="section-subtitle">输入或导入<strong>当天单日</strong>分钟级行情，实时观察 ETF 与 iNAV 背离情况，辅助盘中决策。</p>
             <div class="monitor-input">
                 <p class="inline-hint" style="margin-bottom:0.75rem;">第一行数据为计算基准（通常为09:30开盘值），14:30后iNAV列系统自动填入影子iNAV（橙色标识）。</p>
                 <div class="monitor-table-wrap">
@@ -68,64 +69,29 @@
 
         <!-- Block 2: Data Input -->
         <section id="data-input" class="block">
-            <h2>数据输入</h2>
+            <h2>历史回测 <span class="section-tag tag-history">历史</span></h2>
+            <p class="section-subtitle">输入<strong>历史多日</strong>分钟级行情，运行策略评估胜率、累计盈亏与最大回撤。基准价格自动取每个交易日首行；持仓不跨日结算。</p>
 
-            <!-- Calculation mode switch -->
-            <div class="mode-switch">
-                <label><input type="radio" name="input-mode" value="inav" checked> 直接使用 iNAV</label>
-                <label><input type="radio" name="input-mode" value="no-inav"> 系统计算 iNAV</label>
-            </div>
-            <p class="inline-hint" id="mode-hint">数据源直接提供 iNAV 时选此项（如 Bloomberg），系统仅对比 iNAV 与 ETF 市价</p>
-
-            <!-- Data source switch -->
-            <div class="mode-switch" style="margin-top: 0.75rem;">
-                <label><input type="radio" name="data-source" value="api" checked> API获取</label>
-                <label><input type="radio" name="data-source" value="manual"> 手动输入</label>
-            </div>
-            <p class="inline-hint" id="source-hint">通过 API 自动获取实时行情数据</p>
-
-            <!-- API mode: data source + ticker inputs -->
-            <div id="api-section">
-                <div id="ticker-config" class="ticker-section">
-                    <div class="source-selector">
-                        <label class="source-label">数据源</label>
-                        <div class="source-row">
-                            <select id="data-source-provider">
-                                <option value="yahoo" selected>Yahoo Finance（免费，无需Token）</option>
-                                <option value="alphavantage">Alpha Vantage（需要API Key）</option>
-                                <option value="twelvedata">Twelve Data（需要API Key）</option>
-                            </select>
-                            <input type="password" id="api-token" class="token-input hidden" placeholder="填入 API Key">
-                        </div>
-                    </div>
-                    <div id="ticker-inputs" class="ticker-grid"></div>
-                    <div class="ticker-actions">
-                        <button id="fetch-data-btn" class="btn btn-primary">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"/></svg>
-                            获取数据
-                        </button>
-                        <span class="fetch-hint">拉取实时行情并自动填入下方表格</span>
-                        <span id="fetch-status" class="fetch-status"></span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Manual mode: baseline + table -->
-            <div id="manual-section" class="hidden">
+            <!-- Baseline (previous close) + table -->
+            <div id="manual-section">
                 <div id="baseline-container" class="baseline-section">
-                    <h3>基准价格（昨收价）</h3>
+                    <h3>数据约定</h3>
                     <div id="baseline-inputs" class="baseline-grid"></div>
                 </div>
-                <h3 style="margin-top:1.25rem; margin-bottom:0.5rem; font-size:0.9rem;">当日实时数据</h3>
+                <h3 style="margin-top:1.25rem; margin-bottom:0.5rem; font-size:0.9rem;">日内分钟级数据</h3>
             </div>
 
-            <!-- Data table (shared, shown in both modes after fetch or for manual) -->
+            <!-- Data table -->
             <div id="data-table-section">
                 <div id="data-table-container"></div>
                 <div class="table-actions">
                     <button id="add-row-btn" class="btn btn-secondary">+ 添加行</button>
                     <button id="delete-row-btn" class="btn btn-danger">- 删除末行</button>
                     <button id="clear-all-btn" class="btn btn-danger">清空全部</button>
+                    <button id="bt-import" class="btn btn-secondary">导入 Excel/CSV</button>
+                    <button id="bt-download-tpl" class="btn btn-secondary">下载模板</button>
+                    <input type="file" id="bt-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+                    <span id="bt-import-status" class="fetch-status"></span>
                 </div>
             </div>
         </section>
@@ -269,6 +235,9 @@
                 <div class="chart-wrapper"><canvas id="premium-chart"></canvas></div>
                 <div class="chart-wrapper"><canvas id="pnl-chart"></canvas></div>
             </div>
+            <h3 id="by-date-title" class="hidden" style="margin-top:1.5rem; margin-bottom:0.5rem; font-size:0.95rem;">按日汇总</h3>
+            <div id="by-date-container"></div>
+            <h3 style="margin-top:1.5rem; margin-bottom:0.5rem; font-size:0.95rem;">交易明细</h3>
             <div id="trade-log-container"></div>
         </section>
 

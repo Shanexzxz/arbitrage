@@ -14,9 +14,9 @@
         <div class="nav-brand">ETF 套利回测</div>
         <div class="nav-links">
             <a href="#price-monitor">价格监控</a>
-            <a href="#indicator-guide">指标说明</a>
             <a href="#data-input">数据输入</a>
             <a href="#strategy-params">策略参数</a>
+            <a href="#indicator-guide">指标说明</a>
             <a href="#bbg-guide">BBG指南</a>
         </div>
     </nav>
@@ -65,91 +65,6 @@
         </section>
 
         <!-- Block 1: Indicator Guide -->
-        <section id="indicator-guide" class="block">
-            <button class="collapse-toggle" aria-expanded="false" aria-controls="guide-content">
-                <span class="collapse-icon"></span>
-                <span class="collapse-title">指标计算说明</span>
-                <span class="collapse-hint">点击展开查看公式和数据来源</span>
-            </button>
-            <div id="guide-content" class="collapsible">
-                <div class="guide-grid">
-                    <div class="guide-card">
-                        <h3>直接使用 iNAV</h3>
-                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">适用于数据源可直接提供 iNAV（如 Bloomberg 7709IV Index），只需对比 iNAV 和 ETF 市价</p>
-                        <table class="formula-table">
-                            <thead><tr><th>输入</th><th>说明</th><th>数据来源</th></tr></thead>
-                            <tbody>
-                                <tr>
-                                    <td>iNAV</td>
-                                    <td>ETF实时指示性净值（已含2倍杠杆+汇率+费用）</td>
-                                    <td><code>Bloomberg: 7709IV Index</code></td>
-                                </tr>
-                                <tr>
-                                    <td>ETF市价</td>
-                                    <td>港股ETF实际交易价格</td>
-                                    <td><code>Bloomberg: 7709 HK / Yahoo: 7709.HK</code></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <table class="formula-table" style="margin-top:0.75rem;">
-                            <thead><tr><th>系统计算</th><th>公式</th></tr></thead>
-                            <tbody>
-                                <tr>
-                                    <td>iNAV涨跌幅</td>
-                                    <td><code>(iNAV当前 - iNAV昨收) / iNAV昨收 × 100%</code></td>
-                                </tr>
-                                <tr>
-                                    <td>ETF涨跌幅</td>
-                                    <td><code>(ETF当前 - ETF昨收) / ETF昨收 × 100%</code></td>
-                                </tr>
-                                <tr>
-                                    <td>溢价/折价率</td>
-                                    <td><code>ETF涨跌幅 - iNAV涨跌幅</code></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="guide-card">
-                        <h3>系统计算 iNAV</h3>
-                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">数据源无法提供 iNAV 时（如 Yahoo Finance），系统用海力士股价×2+汇率自动合成</p>
-                        <table class="formula-table">
-                            <thead><tr><th>输入</th><th>说明</th><th>数据来源</th></tr></thead>
-                            <tbody>
-                                <tr>
-                                    <td>海力士股价</td>
-                                    <td>SK海力士正股价格（韩元）</td>
-                                    <td><code>Yahoo: 000660.KS / BBG: 000660 KS</code></td>
-                                </tr>
-                                <tr>
-                                    <td>KRW/HKD汇率</td>
-                                    <td>韩元兑港币汇率</td>
-                                    <td><code>Yahoo: KRWHKD=X / BBG: KRWHKD Curncy</code></td>
-                                </tr>
-                                <tr>
-                                    <td>ETF市价</td>
-                                    <td>港股ETF实际交易价格</td>
-                                    <td><code>Yahoo: 7709.HK / BBG: 7709 HK</code></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <table class="formula-table" style="margin-top:0.75rem;">
-                            <thead><tr><th>系统计算</th><th>公式</th></tr></thead>
-                            <tbody>
-                                <tr>
-                                    <td>合成iNAV涨跌幅</td>
-                                    <td><code>海力士涨跌幅 × 2 + 汇率变动</code></td>
-                                </tr>
-                                <tr>
-                                    <td>溢价/折价率</td>
-                                    <td><code>ETF涨跌幅 - 合成iNAV涨跌幅</code></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <p class="note" style="margin-top:0.75rem;">注意：合成 iNAV 为近似值，未纳入以下因素：管理费（每日约0.01%）、杠杆融资成本、每日再平衡损耗、底层合约展期成本。实际 iNAV 会略低于合成值，长期持仓偏差会累积。建议配合真实 iNAV 数据源校验。</p>
-                    </div>
-                </div>
-            </div>
-        </section>
 
         <!-- Block 2: Data Input -->
         <section id="data-input" class="block">
@@ -255,6 +170,93 @@
             </div>
             <div class="run-section">
                 <button id="run-backtest-btn" class="btn btn-primary btn-large">运行回测</button>
+            </div>
+        </section>
+
+        <!-- Indicator Guide -->
+        <section id="indicator-guide" class="block">
+            <button class="collapse-toggle" aria-expanded="false" aria-controls="guide-content">
+                <span class="collapse-icon"></span>
+                <span class="collapse-title">指标计算说明</span>
+                <span class="collapse-hint">点击展开查看公式和数据来源</span>
+            </button>
+            <div id="guide-content" class="collapsible">
+                <div class="guide-grid">
+                    <div class="guide-card">
+                        <h3>直接使用 iNAV</h3>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">适用于数据源可直接提供 iNAV（如 Bloomberg 7709IV Index），只需对比 iNAV 和 ETF 市价</p>
+                        <table class="formula-table">
+                            <thead><tr><th>输入</th><th>说明</th><th>数据来源</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>iNAV</td>
+                                    <td>ETF实时指示性净值（已含2倍杠杆+汇率+费用）</td>
+                                    <td><code>Bloomberg: 7709IV Index</code></td>
+                                </tr>
+                                <tr>
+                                    <td>ETF市价</td>
+                                    <td>港股ETF实际交易价格</td>
+                                    <td><code>Bloomberg: 7709 HK / Yahoo: 7709.HK</code></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <table class="formula-table" style="margin-top:0.75rem;">
+                            <thead><tr><th>系统计算</th><th>公式</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>iNAV涨跌幅</td>
+                                    <td><code>(iNAV当前 - iNAV昨收) / iNAV昨收 × 100%</code></td>
+                                </tr>
+                                <tr>
+                                    <td>ETF涨跌幅</td>
+                                    <td><code>(ETF当前 - ETF昨收) / ETF昨收 × 100%</code></td>
+                                </tr>
+                                <tr>
+                                    <td>溢价/折价率</td>
+                                    <td><code>ETF涨跌幅 - iNAV涨跌幅</code></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="guide-card">
+                        <h3>系统计算 iNAV</h3>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">数据源无法提供 iNAV 时（如 Yahoo Finance），系统用海力士股价×2+汇率自动合成</p>
+                        <table class="formula-table">
+                            <thead><tr><th>输入</th><th>说明</th><th>数据来源</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>海力士股价</td>
+                                    <td>SK海力士正股价格（韩元）</td>
+                                    <td><code>Yahoo: 000660.KS / BBG: 000660 KS</code></td>
+                                </tr>
+                                <tr>
+                                    <td>KRW/HKD汇率</td>
+                                    <td>韩元兑港币汇率</td>
+                                    <td><code>Yahoo: KRWHKD=X / BBG: KRWHKD Curncy</code></td>
+                                </tr>
+                                <tr>
+                                    <td>ETF市价</td>
+                                    <td>港股ETF实际交易价格</td>
+                                    <td><code>Yahoo: 7709.HK / BBG: 7709 HK</code></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <table class="formula-table" style="margin-top:0.75rem;">
+                            <thead><tr><th>系统计算</th><th>公式</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>合成iNAV涨跌幅</td>
+                                    <td><code>海力士涨跌幅 × 2 + 汇率变动</code></td>
+                                </tr>
+                                <tr>
+                                    <td>溢价/折价率</td>
+                                    <td><code>ETF涨跌幅 - 合成iNAV涨跌幅</code></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="note" style="margin-top:0.75rem;">注意：合成 iNAV 为近似值，未纳入以下因素：管理费（每日约0.01%）、杠杆融资成本、每日再平衡损耗、底层合约展期成本。实际 iNAV 会略低于合成值，长期持仓偏差会累积。建议配合真实 iNAV 数据源校验。</p>
+                    </div>
+                </div>
             </div>
         </section>
 

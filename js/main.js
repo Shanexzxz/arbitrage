@@ -160,8 +160,8 @@ function renderStatsPanel(stats) {
         { label: '信号触发', value: `${stats.totalTrades} 次`, hint: '背离超阈值的调仓次数' },
         { label: '有效交易', value: `${stats.profitableTrades} 次`, hint: '扣除费用后仍盈利的交易' },
         { label: '平均单次收益', value: `${stats.avgProfit.toFixed(0)} HKD`, hint: '总收益 / 交易次数' },
-        { label: '14:30前信号', value: `${stats.beforeCount} 次`, hint: 'iNAV实时更新期间的信号（多日累计）' },
-        { label: '14:30后信号', value: `${stats.afterCount} 次`, hint: 'iNAV冻结后的信号（信息优势窗口，多日累计）' },
+        { label: '14:30前信号', value: `${stats.beforeCount} 次`, hint: '韩国主板交易时段的信号（多日累计）' },
+        { label: '14:30后信号', value: `${stats.afterCount} 次`, hint: '韩国主板收盘后的信号（多日累计）' },
     ];
 
     panel.innerHTML = items.map(item => `
@@ -522,10 +522,10 @@ const MONITOR_DEMO_ROWS = [
     { time: '13:30', inav: '92.00', etf: '91.90', hynix: '202200', krwhkd: '0.0058' },
     { time: '14:00', inav: '92.30', etf: '92.25', hynix: '202500', krwhkd: '0.0058' },
     { time: '14:30', inav: '92.50', etf: '92.45', hynix: '202800', krwhkd: '0.0058' },
-    { time: '14:45', inav: '', etf: '92.80', hynix: '203200', krwhkd: '0.0058' },
-    { time: '15:00', inav: '', etf: '93.10', hynix: '203500', krwhkd: '0.0058' },
-    { time: '15:30', inav: '', etf: '92.60', hynix: '203000', krwhkd: '0.0058' },
-    { time: '16:00', inav: '', etf: '92.90', hynix: '203300', krwhkd: '0.0058' },
+    { time: '14:45', inav: '92.85', etf: '92.80', hynix: '203200', krwhkd: '0.0058' },
+    { time: '15:00', inav: '92.55', etf: '93.10', hynix: '203500', krwhkd: '0.0058' },
+    { time: '15:30', inav: '92.52', etf: '92.60', hynix: '203000', krwhkd: '0.0058' },
+    { time: '16:00', inav: '92.58', etf: '92.90', hynix: '203300', krwhkd: '0.0058' },
 ];
 
 function initMonitorTable() {
@@ -609,10 +609,9 @@ function updateDivergenceIndicator(etf, officialInav, shadowInav, time) {
         return;
     }
 
-    const CUTOFF = '14:30';
-    const isPostCutoff = time > CUTOFF;
-    const referenceInav = (!isPostCutoff && officialInav) ? officialInav : shadowInav;
-    const inavSource = (!isPostCutoff && officialInav) ? '官方iNAV' : '影子iNAV';
+    // Always prefer official iNAV (available all day from BBG)
+    const referenceInav = officialInav || shadowInav;
+    const inavSource = officialInav ? '官方iNAV' : '影子iNAV';
 
     // Calculate divergence
     const divergence = ((etf - referenceInav) / referenceInav * 100);
@@ -653,7 +652,7 @@ function updateDivergenceIndicator(etf, officialInav, shadowInav, time) {
         </div>
         <div class="div-card">
             <div class="div-value neutral">${time}</div>
-            <div class="div-label">最新数据时间${isPostCutoff ? '（iNAV已停更）' : ''}</div>
+            <div class="div-label">最新数据时间</div>
         </div>
     `;
 }
@@ -748,7 +747,6 @@ function renderMonitorCharts() {
     if (!baseInav || !baseHynix || !baseKrwhkd) return;
 
     // Calculate shadow iNAV for all rows
-    const CUTOFF = '14:30';
     const labels = data.map(d => d.time);
     const officialInav = [];
     const etfPrices = [];
@@ -756,10 +754,8 @@ function renderMonitorCharts() {
 
     for (const d of data) {
         etfPrices.push(d.etf);
-        officialInav.push(d.inav); // null after 14:30
+        officialInav.push(d.inav);
 
-        // Shadow iNAV(HKD) = baseInav(HKD) × (1 + hynix_change × 2) × (1 + krwhkd_change)
-        // hynix_change captures stock movement, krwhkd_change captures FX impact on HKD pricing
         if (d.hynix && d.krwhkd) {
             const hynixChange = (d.hynix - baseHynix) / baseHynix;
             const fxChange = (d.krwhkd - baseKrwhkd) / baseKrwhkd;
@@ -770,20 +766,9 @@ function renderMonitorCharts() {
         }
     }
 
-    // Chart 1: iNAV + Shadow iNAV vs ETF Price (full day)
+    // Chart 1: iNAV vs ETF Price (full day direct comparison)
     const ctx1 = document.getElementById('chart-price-vs-inav').getContext('2d');
     if (chartPriceVsInav) chartPriceVsInav.destroy();
-
-    // Build combined iNAV line: official before 14:30, shadow after
-    const combinedInav = data.map((d, i) => {
-        if (d.time <= CUTOFF && officialInav[i] !== null) {
-            return officialInav[i];
-        }
-        return shadowInav[i];
-    });
-
-    // Find cutoff index for annotation
-    const cutoffIdx = data.findIndex(d => d.time > CUTOFF);
 
     chartPriceVsInav = new Chart(ctx1, {
         type: 'line',
@@ -791,83 +776,45 @@ function renderMonitorCharts() {
             labels,
             datasets: [
                 {
-                    label: 'ETF 成交价 (HKD)',
+                    label: 'ETF 成交价',
                     data: etfPrices,
                     borderColor: '#2563eb',
                     borderWidth: 2,
-                    pointRadius: 2,
+                    pointRadius: 0,
                     fill: false,
                 },
                 {
-                    label: '官方 iNAV (09:30-14:30)',
+                    label: 'iNAV（官方）',
                     data: officialInav,
                     borderColor: '#16a34a',
                     borderWidth: 2,
-                    pointRadius: 2,
-                    borderDash: [],
+                    pointRadius: 0,
                     fill: false,
-                    spanGaps: false,
-                },
-                {
-                    label: '影子 iNAV (14:30后)',
-                    data: data.map((d, i) => d.time > CUTOFF ? shadowInav[i] : null),
-                    borderColor: '#f59e0b',
-                    borderWidth: 2,
-                    pointRadius: 2,
-                    borderDash: [5, 3],
-                    fill: false,
-                    spanGaps: false,
+                    spanGaps: true,
                 },
             ],
         },
         options: {
             responsive: true,
             plugins: {
-                title: { display: true, text: 'ETF成交价 vs iNAV（含影子iNAV续接）' },
-                legend: {
-                    labels: {
-                        usePointStyle: true,
-                        pointStyle: 'line',
-                    },
-                },
+                title: { display: true, text: 'ETF成交价 vs 官方iNAV（全天对比）' },
+                legend: { labels: { usePointStyle: true, pointStyle: 'line' } },
             },
             scales: { y: { title: { display: true, text: '价格 (HKD)' } } },
         },
-        plugins: [{
-            id: 'cutoffLine',
-            afterDraw(chart) {
-                if (cutoffIdx <= 0) return;
-                const { ctx, chartArea, scales } = chart;
-                const xPos = scales.x.getPixelForValue(cutoffIdx);
-                ctx.save();
-                ctx.setLineDash([4, 4]);
-                ctx.strokeStyle = '#dc2626';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.moveTo(xPos, chartArea.top);
-                ctx.lineTo(xPos, chartArea.bottom);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = '#dc2626';
-                ctx.font = '11px sans-serif';
-                ctx.fillText('14:30 iNAV停更', xPos + 4, chartArea.top + 14);
-                ctx.restore();
-            }
-        }],
     });
 
-    // Chart 2: Shadow iNAV vs Official iNAV (09:30-14:30 only, validation)
+    // Chart 2: Shadow iNAV vs Official iNAV (full day validation)
     const ctx2 = document.getElementById('chart-shadow-validation').getContext('2d');
     if (chartShadowValidation) chartShadowValidation.destroy();
 
-    // Filter only rows where both official and shadow exist (before 14:30)
     const validationLabels = [];
     const officialLine = [];
     const shadowLine = [];
     const errorLine = [];
 
     for (let i = 0; i < data.length; i++) {
-        if (data[i].time <= CUTOFF && officialInav[i] !== null && shadowInav[i] !== null) {
+        if (officialInav[i] !== null && shadowInav[i] !== null) {
             validationLabels.push(data[i].time);
             officialLine.push(officialInav[i]);
             shadowLine.push(shadowInav[i]);
@@ -913,7 +860,7 @@ function renderMonitorCharts() {
         options: {
             responsive: true,
             plugins: {
-                title: { display: true, text: '影子iNAV校验（09:30-14:30 对比官方）' },
+                title: { display: true, text: '影子iNAV校验（全天对比官方）' },
                 legend: {
                     labels: {
                         usePointStyle: true,
@@ -1059,8 +1006,8 @@ function renderDivergenceChart(data, threshold) {
                     ctx.font = '11px sans-serif';
                     const xPos = xScale.getPixelForValue(cutoffIndices[0]);
                     const labelText = cutoffIndices.length > 1
-                        ? `14:30 iNAV冻结 (×${cutoffIndices.length})`
-                        : '14:30 iNAV冻结';
+                        ? `14:30 韩国收盘 (×${cutoffIndices.length})`
+                        : '14:30 韩国收盘';
                     ctx.fillText(labelText, xPos + 4, chartArea.top + 14);
                 }
 

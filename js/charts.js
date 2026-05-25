@@ -13,7 +13,7 @@ let pnlChart = null;
  * @param {Array} trades - trade results from backtest engine
  */
 export function renderCharts(data, trades) {
-    renderEquityChart(trades);
+    renderEquityChart(data, trades);
     renderPremiumChart(data, trades);
     renderPnlHistogram(trades);
 }
@@ -39,24 +39,34 @@ function buildAxisLabels(data) {
     });
 }
 
-function renderEquityChart(trades) {
+function renderEquityChart(data, trades) {
     const ctx = document.getElementById('equity-chart').getContext('2d');
     if (equityChart) equityChart.destroy();
 
-    // Use 'date time' for label when multi-day so the curve is readable.
-    const dates = new Set(trades.map(t => t.date || '').filter(d => d && d !== '__single__'));
-    const multiDay = dates.size > 1;
-    const labels = ['Start', ...trades.map((t, i) => {
-        if (!t.exitTime) return `Trade ${i + 1}`;
-        if (!multiDay || !t.date || t.date === '__single__') return t.exitTime;
-        const md = t.date.length >= 10 ? t.date.slice(5) : t.date;
-        return `${md} ${t.exitTime}`;
-    })];
-    const cumulative = [0];
+    // Build full timeline labels from data
+    const labels = buildAxisLabels(data);
+
+    // Build cumulative equity curve on the full timeline.
+    // Value steps at each trade's EXIT index; flat between trades.
+    const cumulative = new Array(data.length).fill(null);
+    cumulative[0] = 0;
+
     let sum = 0;
     for (const trade of trades) {
         sum += (trade.netProfit !== undefined ? trade.netProfit : trade.pnl) || 0;
-        cumulative.push(sum);
+        if (trade.exitIndex < data.length) {
+            cumulative[trade.exitIndex] = sum;
+        }
+    }
+
+    // Fill forward: hold last known value between trade exits
+    let lastVal = 0;
+    for (let i = 0; i < cumulative.length; i++) {
+        if (cumulative[i] !== null) {
+            lastVal = cumulative[i];
+        } else {
+            cumulative[i] = lastVal;
+        }
     }
 
     equityChart = new Chart(ctx, {
@@ -69,12 +79,24 @@ function renderEquityChart(trades) {
                 borderColor: '#2563eb',
                 backgroundColor: 'rgba(37, 99, 235, 0.1)',
                 fill: true,
-                tension: 0.2,
+                tension: 0,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                pointHitRadius: 8,
             }],
         },
         options: {
             responsive: true,
-            plugins: { title: { display: true, text: '累计收益曲线' }, legend: { labels: { usePointStyle: true, pointStyle: 'line' } } },
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                title: { display: true, text: '累计收益曲线' },
+                legend: { labels: { usePointStyle: true, pointStyle: 'line' } },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `累计: ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(3) : 0}%`
+                    }
+                }
+            },
             scales: {
                 y: { title: { display: true, text: '收益 (%)' } },
             },
@@ -197,7 +219,11 @@ function renderPnlHistogram(trades) {
             responsive: true,
             plugins: { title: { display: true, text: '单笔盈亏分布' }, legend: { labels: { usePointStyle: true, pointStyle: 'line' } } },
             scales: {
+                x: { ticks: { maxRotation: 0 } },
                 y: { title: { display: true, text: '盈亏 (%)' } },
+            },
+            datasets: {
+                bar: { maxBarThickness: 60 },
             },
         },
     });

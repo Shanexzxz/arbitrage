@@ -8,34 +8,83 @@
 const COLUMNS = [
     { key: 'date',       label: '日期',          type: 'text',   placeholder: 'YYYY-MM-DD' },
     { key: 'time',       label: '时间',          type: 'text',   placeholder: 'HH:MM' },
-    { key: 'inavPrice',  label: 'iNAV(HKD)',     type: 'number', placeholder: '14:30前' },
+    { key: 'inavPrice',  label: 'iNAV(HKD)',     type: 'number', placeholder: '官方值' },
+    { key: 'shadowInav', label: '影子iNAV',      type: 'number', placeholder: '自动计算', readonly: true },
     { key: 'hynixPrice', label: '海力士股价(KRW)', type: 'number', placeholder: '201000' },
     { key: 'fxRate',     label: 'KRW/HKD汇率',    type: 'number', placeholder: '0.00600' },
     { key: 'etfPrice',   label: 'ETF市价(HKD)',   type: 'number', placeholder: '10.15' },
 ];
 
-// Demo data spans 3 trading days. iNAV is provided up through 14:30 (BBG
-// publishes it then), and left blank afterwards — the engine derives a
-// synthetic iNAV for those rows from Hynix + FX.
+// Demo data from actual BBG export (2026-05-21), 5-min intervals.
+// iNAV + ETF from BBG; Hynix approximated from ETF movements (at half rate for 2x leverage);
+// FX ≈ 0.006 KRW/HKD. Shadow iNAV will show meaningful error vs official iNAV.
 const DEMO_DATA = [
-    { date: '2026-05-13', time: '09:30', inavPrice: '10.00', hynixPrice: '200000', fxRate: '0.00600', etfPrice: '10.00' },
-    { date: '2026-05-13', time: '10:30', inavPrice: '10.10', hynixPrice: '201000', fxRate: '0.00600', etfPrice: '10.28' }, // premium
-    { date: '2026-05-13', time: '13:30', inavPrice: '10.15', hynixPrice: '201500', fxRate: '0.00601', etfPrice: '10.16' }, // reverted
-    { date: '2026-05-13', time: '14:30', inavPrice: '10.20', hynixPrice: '202000', fxRate: '0.00601', etfPrice: '10.19' },
-    { date: '2026-05-13', time: '15:30', inavPrice: '',      hynixPrice: '202200', fxRate: '0.00600', etfPrice: '10.40' }, // shadow iNAV
-    { date: '2026-05-13', time: '16:00', inavPrice: '',      hynixPrice: '202300', fxRate: '0.00601', etfPrice: '10.25' },
-    { date: '2026-05-14', time: '09:30', inavPrice: '10.25', hynixPrice: '202500', fxRate: '0.00600', etfPrice: '10.25' },
-    { date: '2026-05-14', time: '10:30', inavPrice: '10.32', hynixPrice: '203200', fxRate: '0.00601', etfPrice: '10.10' }, // discount
-    { date: '2026-05-14', time: '13:30', inavPrice: '10.30', hynixPrice: '203000', fxRate: '0.00600', etfPrice: '10.32' },
-    { date: '2026-05-14', time: '14:30', inavPrice: '10.31', hynixPrice: '203100', fxRate: '0.00601', etfPrice: '10.30' },
-    { date: '2026-05-14', time: '15:30', inavPrice: '',      hynixPrice: '203300', fxRate: '0.00601', etfPrice: '10.34' },
-    { date: '2026-05-14', time: '16:00', inavPrice: '',      hynixPrice: '203400', fxRate: '0.00600', etfPrice: '10.35' },
-    { date: '2026-05-15', time: '09:30', inavPrice: '10.35', hynixPrice: '203500', fxRate: '0.00600', etfPrice: '10.36' },
-    { date: '2026-05-15', time: '10:30', inavPrice: '10.40', hynixPrice: '204000', fxRate: '0.00601', etfPrice: '10.55' }, // premium
-    { date: '2026-05-15', time: '13:30', inavPrice: '10.42', hynixPrice: '204200', fxRate: '0.00600', etfPrice: '10.43' },
-    { date: '2026-05-15', time: '14:30', inavPrice: '10.45', hynixPrice: '204500', fxRate: '0.00601', etfPrice: '10.44' },
-    { date: '2026-05-15', time: '15:30', inavPrice: '',      hynixPrice: '204600', fxRate: '0.00600', etfPrice: '10.62' },
-    { date: '2026-05-15', time: '16:00', inavPrice: '',      hynixPrice: '204800', fxRate: '0.00601', etfPrice: '10.50' },
+    { date: '2026-05-21', time: '09:30', inavPrice: '93.8025', hynixPrice: '200000', fxRate: '0.006000', etfPrice: '93.62' },
+    { date: '2026-05-21', time: '09:35', inavPrice: '94.5392', hynixPrice: '201294', fxRate: '0.006000', etfPrice: '94.90' },
+    { date: '2026-05-21', time: '09:40', inavPrice: '94.5432', hynixPrice: '201066', fxRate: '0.006000', etfPrice: '94.62' },
+    { date: '2026-05-21', time: '09:45', inavPrice: '93.9899', hynixPrice: '200523', fxRate: '0.006000', etfPrice: '94.12' },
+    { date: '2026-05-21', time: '09:50', inavPrice: '93.8768', hynixPrice: '200269', fxRate: '0.006000', etfPrice: '93.90' },
+    { date: '2026-05-21', time: '09:55', inavPrice: '92.7595', hynixPrice: '199250', fxRate: '0.006000', etfPrice: '92.74' },
+    { date: '2026-05-21', time: '10:00', inavPrice: '93.5937', hynixPrice: '200292', fxRate: '0.006001', etfPrice: '94.00' },
+    { date: '2026-05-21', time: '10:05', inavPrice: '94.4255', hynixPrice: '200615', fxRate: '0.006001', etfPrice: '94.44' },
+    { date: '2026-05-21', time: '10:10', inavPrice: '94.9757', hynixPrice: '201291', fxRate: '0.006001', etfPrice: '95.22' },
+    { date: '2026-05-21', time: '10:15', inavPrice: '94.7949', hynixPrice: '201257', fxRate: '0.006001', etfPrice: '95.00' },
+    { date: '2026-05-21', time: '10:20', inavPrice: '95.6099', hynixPrice: '202229', fxRate: '0.006001', etfPrice: '95.82' },
+    { date: '2026-05-21', time: '10:25', inavPrice: '96.4301', hynixPrice: '203305', fxRate: '0.006001', etfPrice: '96.72' },
+    { date: '2026-05-21', time: '10:30', inavPrice: '97.5257', hynixPrice: '204347', fxRate: '0.006001', etfPrice: '97.78' },
+    { date: '2026-05-21', time: '10:35', inavPrice: '97.3363', hynixPrice: '203836', fxRate: '0.006001', etfPrice: '97.62' },
+    { date: '2026-05-21', time: '10:40', inavPrice: '98.3503', hynixPrice: '204280', fxRate: '0.006001', etfPrice: '98.66' },
+    { date: '2026-05-21', time: '10:45', inavPrice: '97.8002', hynixPrice: '203267', fxRate: '0.006001', etfPrice: '97.88' },
+    { date: '2026-05-21', time: '10:50', inavPrice: '97.2536', hynixPrice: '202839', fxRate: '0.006002', etfPrice: '97.40' },
+    { date: '2026-05-21', time: '10:55', inavPrice: '97.4287', hynixPrice: '203187', fxRate: '0.006002', etfPrice: '97.56' },
+    { date: '2026-05-21', time: '11:00', inavPrice: '97.0448', hynixPrice: '203178', fxRate: '0.006002', etfPrice: '97.10' },
+    { date: '2026-05-21', time: '11:05', inavPrice: '97.1452', hynixPrice: '203513', fxRate: '0.006002', etfPrice: '97.08' },
+    { date: '2026-05-21', time: '11:10', inavPrice: '97.5069', hynixPrice: '204096', fxRate: '0.006002', etfPrice: '97.46' },
+    { date: '2026-05-21', time: '11:15', inavPrice: '97.6997', hynixPrice: '204195', fxRate: '0.006002', etfPrice: '97.64' },
+    { date: '2026-05-21', time: '11:20', inavPrice: '97.8838', hynixPrice: '204056', fxRate: '0.006002', etfPrice: '97.86' },
+    { date: '2026-05-21', time: '11:25', inavPrice: '98.3467', hynixPrice: '203963', fxRate: '0.006002', etfPrice: '98.30' },
+    { date: '2026-05-21', time: '11:30', inavPrice: '98.2587', hynixPrice: '203446', fxRate: '0.006002', etfPrice: '98.12' },
+    { date: '2026-05-21', time: '11:35', inavPrice: '98.1743', hynixPrice: '203442', fxRate: '0.006003', etfPrice: '98.20' },
+    { date: '2026-05-21', time: '11:40', inavPrice: '98.1690', hynixPrice: '203520', fxRate: '0.006003', etfPrice: '97.96' },
+    { date: '2026-05-21', time: '11:45', inavPrice: '97.7968', hynixPrice: '203737', fxRate: '0.006003', etfPrice: '97.70' },
+    { date: '2026-05-21', time: '11:50', inavPrice: '96.9680', hynixPrice: '203336', fxRate: '0.006003', etfPrice: '96.90' },
+    { date: '2026-05-21', time: '11:55', inavPrice: '96.9657', hynixPrice: '203542', fxRate: '0.006003', etfPrice: '96.94' },
+    { date: '2026-05-21', time: '13:00', inavPrice: '97.6989', hynixPrice: '202763', fxRate: '0.006004', etfPrice: '97.24' },
+    { date: '2026-05-21', time: '13:05', inavPrice: '97.4335', hynixPrice: '202981', fxRate: '0.006004', etfPrice: '97.58' },
+    { date: '2026-05-21', time: '13:10', inavPrice: '97.3319', hynixPrice: '203001', fxRate: '0.006004', etfPrice: '97.30' },
+    { date: '2026-05-21', time: '13:15', inavPrice: '97.5081', hynixPrice: '203538', fxRate: '0.006005', etfPrice: '97.46' },
+    { date: '2026-05-21', time: '13:20', inavPrice: '97.5102', hynixPrice: '204003', fxRate: '0.006005', etfPrice: '97.54' },
+    { date: '2026-05-21', time: '13:25', inavPrice: '98.0532', hynixPrice: '204590', fxRate: '0.006005', etfPrice: '97.92' },
+    { date: '2026-05-21', time: '13:30', inavPrice: '97.4969', hynixPrice: '203823', fxRate: '0.006005', etfPrice: '97.30' },
+    { date: '2026-05-21', time: '13:35', inavPrice: '97.4062', hynixPrice: '203396', fxRate: '0.006005', etfPrice: '97.20' },
+    { date: '2026-05-21', time: '13:40', inavPrice: '97.4052', hynixPrice: '203055', fxRate: '0.006005', etfPrice: '97.26' },
+    { date: '2026-05-21', time: '13:45', inavPrice: '97.4047', hynixPrice: '202759', fxRate: '0.006005', etfPrice: '97.24' },
+    { date: '2026-05-21', time: '13:50', inavPrice: '97.7622', hynixPrice: '203044', fxRate: '0.006005', etfPrice: '97.66' },
+    { date: '2026-05-21', time: '13:55', inavPrice: '98.2345', hynixPrice: '203565', fxRate: '0.006005', etfPrice: '97.98' },
+    { date: '2026-05-21', time: '14:00', inavPrice: '98.4129', hynixPrice: '204251', fxRate: '0.006005', etfPrice: '98.22' },
+    { date: '2026-05-21', time: '14:05', inavPrice: '98.5917', hynixPrice: '204849', fxRate: '0.006006', etfPrice: '98.36' },
+    { date: '2026-05-21', time: '14:10', inavPrice: '98.8605', hynixPrice: '205317', fxRate: '0.006006', etfPrice: '98.60' },
+    { date: '2026-05-21', time: '14:15', inavPrice: '98.3192', hynixPrice: '204627', fxRate: '0.006006', etfPrice: '98.08' },
+    { date: '2026-05-21', time: '14:20', inavPrice: '97.3121', hynixPrice: '203141', fxRate: '0.006006', etfPrice: '96.94' },
+    { date: '2026-05-21', time: '14:25', inavPrice: '95.4980', hynixPrice: '201757', fxRate: '0.006006', etfPrice: '95.72' },
+    { date: '2026-05-21', time: '14:30', inavPrice: '96.6956', hynixPrice: '202405', fxRate: '0.006006', etfPrice: '96.78' },
+    { date: '2026-05-21', time: '14:35', inavPrice: '96.6910', hynixPrice: '201886', fxRate: '0.006006', etfPrice: '96.12' },
+    { date: '2026-05-21', time: '14:40', inavPrice: '96.7735', hynixPrice: '201722', fxRate: '0.006006', etfPrice: '95.72' },
+    { date: '2026-05-21', time: '14:45', inavPrice: '96.7672', hynixPrice: '202076', fxRate: '0.006006', etfPrice: '95.86' },
+    { date: '2026-05-21', time: '14:50', inavPrice: '96.0420', hynixPrice: '202316', fxRate: '0.006006', etfPrice: '95.88' },
+    { date: '2026-05-21', time: '14:55', inavPrice: '96.0512', hynixPrice: '201495', fxRate: '0.006007', etfPrice: '95.02' },
+    { date: '2026-05-21', time: '15:00', inavPrice: '96.0447', hynixPrice: '200911', fxRate: '0.006007', etfPrice: '94.50' },
+    { date: '2026-05-21', time: '15:05', inavPrice: '96.0624', hynixPrice: '200019', fxRate: '0.006007', etfPrice: '93.64' },
+    { date: '2026-05-21', time: '15:10', inavPrice: '96.0701', hynixPrice: '200234', fxRate: '0.006007', etfPrice: '93.90' },
+    { date: '2026-05-21', time: '15:15', inavPrice: '96.0734', hynixPrice: '199757', fxRate: '0.006007', etfPrice: '93.30' },
+    { date: '2026-05-21', time: '15:20', inavPrice: '96.0482', hynixPrice: '198852', fxRate: '0.006007', etfPrice: '92.10' },
+    { date: '2026-05-21', time: '15:25', inavPrice: '96.0478', hynixPrice: '199573', fxRate: '0.006007', etfPrice: '93.10' },
+    { date: '2026-05-21', time: '15:30', inavPrice: '96.0408', hynixPrice: '200316', fxRate: '0.006007', etfPrice: '93.96' },
+    { date: '2026-05-21', time: '15:35', inavPrice: '96.0423', hynixPrice: '200534', fxRate: '0.006007', etfPrice: '94.14' },
+    { date: '2026-05-21', time: '15:40', inavPrice: '96.0411', hynixPrice: '199765', fxRate: '0.006007', etfPrice: '93.40' },
+    { date: '2026-05-21', time: '15:45', inavPrice: '96.0482', hynixPrice: '199835', fxRate: '0.006007', etfPrice: '93.46' },
+    { date: '2026-05-21', time: '15:50', inavPrice: '96.0574', hynixPrice: '199774', fxRate: '0.006008', etfPrice: '93.38' },
+    { date: '2026-05-21', time: '15:55', inavPrice: '96.0712', hynixPrice: '200150', fxRate: '0.006008', etfPrice: '93.80' },
 ];
 
 export function getColumns() {
@@ -89,15 +138,19 @@ function generateRowsWithData(dataRows) {
 function generateRowWithData(rowData) {
     const cells = COLUMNS.map(c => {
         const value = rowData && rowData[c.key] !== undefined ? rowData[c.key] : '';
-        return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${value}"></td>`;
+        const readonlyAttr = c.readonly ? 'readonly tabindex="-1"' : '';
+        const cls = c.readonly ? ' class="shadow-cell"' : '';
+        return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${value}" ${readonlyAttr}${cls}></td>`;
     }).join('');
     return `<tr>${cells}</tr>`;
 }
 
 function generateRow() {
-    const cells = COLUMNS.map(c =>
-        `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any"></td>`
-    ).join('');
+    const cells = COLUMNS.map(c => {
+        const readonlyAttr = c.readonly ? 'readonly tabindex="-1"' : '';
+        const cls = c.readonly ? ' class="shadow-cell"' : '';
+        return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" ${readonlyAttr}${cls}></td>`;
+    }).join('');
     return `<tr>${cells}</tr>`;
 }
 
@@ -138,6 +191,7 @@ function readRows() {
         inputs.forEach((input, i) => {
             const col = COLUMNS[i];
             if (!col) return;
+            if (col.readonly) return; // skip computed columns
             if (col.type === 'number') {
                 const val = parseFloat(input.value);
                 entry[col.key] = isNaN(val) ? null : val;
@@ -180,19 +234,24 @@ function resolveDay(date, rows) {
 
         let inavChange = null;
         let inavSource = null;
-        if (row.inavPrice !== null && row.inavPrice !== undefined && baseInav) {
-            // Prefer the truth path whenever the row reports an iNAV.
-            inavChange = ((row.inavPrice - baseInav) / baseInav) * 100;
-            inavSource = 'truth';
-        } else if (row.hynixPrice !== null && row.hynixPrice !== undefined &&
-                   row.fxRate !== null && row.fxRate !== undefined &&
-                   baseHynix && baseFx) {
+        let shadowInavChange = null;
+
+        // Always compute shadow when Hynix+FX available (for validation)
+        if (row.hynixPrice !== null && row.hynixPrice !== undefined &&
+            row.fxRate !== null && row.fxRate !== undefined &&
+            baseHynix && baseFx) {
             const hynixChange = ((row.hynixPrice - baseHynix) / baseHynix) * 100;
             const fxChange = ((row.fxRate - baseFx) / baseFx) * 100;
-            inavChange = hynixChange * 2 + fxChange;
+            shadowInavChange = hynixChange * 2 + fxChange;
+        }
+
+        if (row.inavPrice !== null && row.inavPrice !== undefined && baseInav) {
+            inavChange = ((row.inavPrice - baseInav) / baseInav) * 100;
+            inavSource = 'truth';
+        } else if (shadowInavChange !== null) {
+            inavChange = shadowInavChange;
             inavSource = 'shadow';
         } else {
-            // Skip: cannot resolve iNAV for this row.
             continue;
         }
 
@@ -207,6 +266,7 @@ function resolveDay(date, rows) {
             etfChange,
             premiumDiscount: etfChange - inavChange,
             inavSource,
+            shadowInavChange,
         });
     }
     return out;
@@ -265,4 +325,61 @@ export function validateData(data, _mode) {
         }
     }
     return errors;
+}
+
+/**
+ * Recalculate shadow iNAV for all rows in the backtest data table.
+ * Groups by date; each day's first row provides the baseline iNAV, Hynix, FX.
+ * Shadow = baseInav * (1 + hynixChange*2) * (1 + fxChange).
+ * Only fills when Hynix + FX are available for that row.
+ */
+export function updateBacktestShadowColumn() {
+    const tbody = document.getElementById('data-tbody');
+    if (!tbody) return;
+    const rows = [...tbody.querySelectorAll('tr')];
+    if (rows.length === 0) return;
+
+    // Find the shadow column index
+    const shadowIdx = COLUMNS.findIndex(c => c.key === 'shadowInav');
+    if (shadowIdx < 0) return;
+
+    // Also find indices for date, inav, hynix, fx
+    const dateIdx = COLUMNS.findIndex(c => c.key === 'date');
+    const inavIdx = COLUMNS.findIndex(c => c.key === 'inavPrice');
+    const hynixIdx = COLUMNS.findIndex(c => c.key === 'hynixPrice');
+    const fxIdx = COLUMNS.findIndex(c => c.key === 'fxRate');
+
+    // Group rows by date
+    const groups = new Map();
+    for (const tr of rows) {
+        const inputs = tr.querySelectorAll('input');
+        const date = inputs[dateIdx]?.value.trim() || '__single__';
+        if (!groups.has(date)) groups.set(date, []);
+        groups.get(date).push({ tr, inputs });
+    }
+
+    for (const [, dayRows] of groups) {
+        if (dayRows.length === 0) continue;
+        const firstInputs = dayRows[0].inputs;
+        const baseInav = parseFloat(firstInputs[inavIdx]?.value) || null;
+        const baseHynix = parseFloat(firstInputs[hynixIdx]?.value) || null;
+        const baseFx = parseFloat(firstInputs[fxIdx]?.value) || null;
+
+        for (const { inputs } of dayRows) {
+            const shadowInput = inputs[shadowIdx];
+            if (!shadowInput) continue;
+
+            const hynix = parseFloat(inputs[hynixIdx]?.value) || null;
+            const fx = parseFloat(inputs[fxIdx]?.value) || null;
+
+            if (baseInav && baseHynix && baseFx && hynix && fx) {
+                const hynixChange = (hynix - baseHynix) / baseHynix;
+                const fxChange = (fx - baseFx) / baseFx;
+                const shadow = baseInav * (1 + hynixChange * 2) * (1 + fxChange);
+                shadowInput.value = shadow.toFixed(4);
+            } else {
+                shadowInput.value = '';
+            }
+        }
+    }
 }

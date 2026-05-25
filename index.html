@@ -13,9 +13,9 @@
     <nav class="sidebar">
         <div class="nav-brand">ETF 套利回测</div>
         <div class="nav-links">
-            <a href="#price-monitor">实时盯盘</a>
-            <a href="#data-input">历史回测</a>
+            <a href="#data-input">数据导入</a>
             <a href="#strategy-params">策略参数</a>
+            <a href="#price-monitor">API盯盘</a>
             <a href="#indicator-guide">指标说明</a>
             <a href="#bbg-guide">BBG指南</a>
         </div>
@@ -29,48 +29,12 @@
 
     <main>
 
-        <!-- Top Charts: Price Tracking & Shadow iNAV Validation -->
-        <section id="price-monitor" class="block">
-            <h2>实时盯盘 <span class="section-tag tag-live">当天</span></h2>
-            <p class="section-subtitle">输入或导入<strong>当天单日</strong>分钟级行情，实时观察 ETF 与 iNAV 背离情况，辅助盘中决策。</p>
-            <div class="monitor-input">
-                <p class="inline-hint" style="margin-bottom:0.75rem;">第一行数据为计算基准（通常为09:30开盘值），14:30后iNAV列系统自动填入影子iNAV（橙色标识）。</p>
-                <div class="monitor-table-wrap">
-                    <table id="monitor-table">
-                        <thead>
-                            <tr>
-                                <th>时间</th>
-                                <th>iNAV(HKD)<br><span style="font-weight:400;font-size:0.65rem;">官方发布值</span></th>
-                                <th>影子iNAV<br><span style="font-weight:400;font-size:0.65rem;">系统计算</span></th>
-                                <th>ETF成交价(HKD)</th>
-                                <th>海力士股价(KRW)</th>
-                                <th>KRW/HKD汇率</th>
-                            </tr>
-                        </thead>
-                        <tbody id="monitor-tbody"></tbody>
-                    </table>
-                </div>
-                <div class="table-actions">
-                    <button id="mon-add-row" class="btn btn-secondary">+ 添加行</button>
-                    <button id="mon-del-row" class="btn btn-danger">- 删除末行</button>
-                    <button id="mon-import" class="btn btn-secondary">导入 Excel/CSV</button>
-                    <button id="mon-download-tpl" class="btn btn-secondary">下载模板</button>
-                    <input type="file" id="mon-file-input" accept=".csv,.xlsx,.xls" class="hidden">
-                </div>
-            </div>
-            <div id="divergence-indicator" class="divergence-indicator"></div>
-            <div class="monitor-charts">
-                <div class="chart-wrapper"><canvas id="chart-price-vs-inav"></canvas></div>
-                <div class="chart-wrapper"><canvas id="chart-shadow-validation"></canvas></div>
-            </div>
-        </section>
-
         <!-- Block 1: Indicator Guide -->
 
         <!-- Block 2: Data Input -->
         <section id="data-input" class="block">
-            <h2>历史回测 <span class="section-tag tag-history">历史</span></h2>
-            <p class="section-subtitle">输入<strong>历史多日</strong>分钟级行情，运行策略评估胜率、累计盈亏与最大回撤。基准价格自动取每个交易日首行；持仓不跨日结算。</p>
+            <h2>数据导入与回测 <span class="section-tag tag-history">历史</span></h2>
+            <p class="section-subtitle">支持直接导入 <strong>BBG BDH 导出的 Excel</strong>（自动识别 Value Page 格式），也可用标准模板导入。基准价格自动取每个交易日首行；持仓不跨日结算。</p>
 
             <!-- Baseline (previous close) + table -->
             <div id="manual-section">
@@ -78,7 +42,7 @@
                     <h3>数据约定</h3>
                     <div id="baseline-inputs" class="baseline-grid"></div>
                 </div>
-                <h3 style="margin-top:1.25rem; margin-bottom:0.5rem; font-size:0.9rem;">日内分钟级数据</h3>
+                <h3 style="margin-top:1.25rem; margin-bottom:0.5rem; font-size:0.9rem;">日内分钟级数据 <span style="font-weight:400; font-size:0.78rem; color:var(--color-text-muted);">（默认展示 2026-05-21 BBG 真实数据）</span></h3>
             </div>
 
             <!-- Data table -->
@@ -88,7 +52,7 @@
                     <button id="add-row-btn" class="btn btn-secondary">+ 添加行</button>
                     <button id="delete-row-btn" class="btn btn-danger">- 删除末行</button>
                     <button id="clear-all-btn" class="btn btn-danger">清空全部</button>
-                    <button id="bt-import" class="btn btn-secondary">导入 Excel/CSV</button>
+                    <button id="bt-import" class="btn btn-primary">导入 BBG Excel / CSV</button>
                     <button id="bt-download-tpl" class="btn btn-secondary">下载模板</button>
                     <input type="file" id="bt-file-input" accept=".csv,.xlsx,.xls" class="hidden">
                     <span id="bt-import-status" class="fetch-status"></span>
@@ -99,6 +63,7 @@
         <!-- Data Dashboard -->
         <section id="dashboard" class="block hidden">
             <h2>偏离监控看板</h2>
+            <div id="dashboard-divergence-indicator" class="divergence-indicator"></div>
             <div class="chart-wrapper" style="margin-bottom:1.25rem;"><canvas id="divergence-chart"></canvas></div>
             <div class="dashboard-stats">
                 <div class="dashboard-split">
@@ -140,6 +105,81 @@
         </section>
 
         <!-- Indicator Guide -->
+
+        <!-- Block 4: Backtest Results -->
+        <section id="backtest-results" class="block hidden">
+            <h2>回测结果</h2>
+            <div id="stats-panel" class="stats-grid"></div>
+            <div class="charts-container">
+                <div class="chart-wrapper"><canvas id="equity-chart"></canvas></div>
+                <div class="chart-wrapper"><canvas id="premium-chart"></canvas></div>
+                <div class="chart-wrapper"><canvas id="pnl-chart"></canvas></div>
+            </div>
+            <!-- Shadow iNAV validation (only shows when Hynix+FX data is provided alongside official iNAV) -->
+            <div id="shadow-validation-section" class="hidden">
+                <h3 style="margin-top:1.5rem; margin-bottom:0.5rem; font-size:0.95rem;">影子 iNAV 验证</h3>
+                <p class="section-subtitle" style="margin-bottom:0.75rem;">对比官方 iNAV 涨跌幅与影子 iNAV（海力士×2+汇率）的计算误差</p>
+                <div id="shadow-validation-stats" class="stats-grid"></div>
+                <div class="chart-wrapper"><canvas id="shadow-backtest-chart"></canvas></div>
+            </div>
+            <h3 id="by-date-title" class="hidden" style="margin-top:1.5rem; margin-bottom:0.5rem; font-size:0.95rem;">按日汇总</h3>
+            <div id="by-date-container"></div>
+            <h3 style="margin-top:1.5rem; margin-bottom:0.5rem; font-size:0.95rem;">交易明细</h3>
+            <div id="trade-log-container"></div>
+        </section>
+
+        <!-- Block 5: Feasibility Conclusion -->
+        <section id="conclusion" class="block hidden">
+            <h2>可行性结论</h2>
+            <div id="traffic-light"></div>
+            <div id="conclusion-text"></div>
+        </section>
+
+        <!-- Price Monitor (API-based, collapsible, default closed) -->
+        <section id="price-monitor" class="block">
+            <button class="collapse-toggle" aria-expanded="false" aria-controls="monitor-content">
+                <span class="collapse-icon"></span>
+                <span class="collapse-title">实时盯盘 <span class="section-tag tag-live">API</span></span>
+                <span class="collapse-hint">需对接 API 后使用，点击展开</span>
+            </button>
+            <div id="monitor-content" class="collapsible">
+                <div class="collapsible-inner">
+                    <p class="section-subtitle" style="margin-top:0.75rem;">需对接实时行情 API（如 Yahoo Finance 代理）后使用。输入或导入<strong>当天单日</strong>分钟级行情，观察 ETF 与 iNAV 背离情况。</p>
+                    <div class="monitor-input">
+                        <p class="inline-hint" style="margin-bottom:0.75rem;">第一行数据为计算基准（通常为09:30开盘值），14:30后iNAV列系统自动填入影子iNAV（橙色标识）。</p>
+                        <div class="monitor-table-wrap">
+                            <table id="monitor-table">
+                                <thead>
+                                    <tr>
+                                        <th>时间</th>
+                                        <th>iNAV(HKD)<br><span style="font-weight:400;font-size:0.65rem;">官方发布值</span></th>
+                                        <th>影子iNAV<br><span style="font-weight:400;font-size:0.65rem;">系统计算</span></th>
+                                        <th>ETF成交价(HKD)</th>
+                                        <th>海力士股价(KRW)</th>
+                                        <th>KRW/HKD汇率</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="monitor-tbody"></tbody>
+                            </table>
+                        </div>
+                        <div class="table-actions">
+                            <button id="mon-add-row" class="btn btn-secondary">+ 添加行</button>
+                            <button id="mon-del-row" class="btn btn-danger">- 删除末行</button>
+                            <button id="mon-import" class="btn btn-secondary">导入 Excel/CSV</button>
+                            <button id="mon-download-tpl" class="btn btn-secondary">下载模板</button>
+                            <input type="file" id="mon-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+                        </div>
+                    </div>
+                    <div id="divergence-indicator" class="divergence-indicator"></div>
+                    <div class="monitor-charts">
+                        <div class="chart-wrapper"><canvas id="chart-price-vs-inav"></canvas></div>
+                        <div class="chart-wrapper"><canvas id="chart-shadow-validation"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Indicator Guide (collapsible) -->
         <section id="indicator-guide" class="block">
             <button class="collapse-toggle" aria-expanded="false" aria-controls="guide-content">
                 <span class="collapse-icon"></span>
@@ -171,11 +211,11 @@
                             <tbody>
                                 <tr>
                                     <td>iNAV涨跌幅</td>
-                                    <td><code>(iNAV当前 - iNAV昨收) / iNAV昨收 × 100%</code></td>
+                                    <td><code>(iNAV当前 - iNAV基准) / iNAV基准 × 100%</code></td>
                                 </tr>
                                 <tr>
                                     <td>ETF涨跌幅</td>
-                                    <td><code>(ETF当前 - ETF昨收) / ETF昨收 × 100%</code></td>
+                                    <td><code>(ETF当前 - ETF基准) / ETF基准 × 100%</code></td>
                                 </tr>
                                 <tr>
                                     <td>溢价/折价率</td>
@@ -185,8 +225,8 @@
                         </table>
                     </div>
                     <div class="guide-card">
-                        <h3>系统计算 iNAV</h3>
-                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">数据源无法提供 iNAV 时（如 Yahoo Finance），系统用海力士股价×2+汇率自动合成</p>
+                        <h3>影子 iNAV（系统合成）</h3>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">数据源无法提供 iNAV 时，系统用海力士股价×2+汇率自动合成，可用于验证官方 iNAV</p>
                         <table class="formula-table">
                             <thead><tr><th>输入</th><th>说明</th><th>数据来源</th></tr></thead>
                             <tbody>
@@ -211,41 +251,19 @@
                             <thead><tr><th>系统计算</th><th>公式</th></tr></thead>
                             <tbody>
                                 <tr>
-                                    <td>合成iNAV涨跌幅</td>
+                                    <td>影子iNAV涨跌幅</td>
                                     <td><code>海力士涨跌幅 × 2 + 汇率变动</code></td>
                                 </tr>
                                 <tr>
                                     <td>溢价/折价率</td>
-                                    <td><code>ETF涨跌幅 - 合成iNAV涨跌幅</code></td>
+                                    <td><code>ETF涨跌幅 - 影子iNAV涨跌幅</code></td>
                                 </tr>
                             </tbody>
                         </table>
-                        <p class="note" style="margin-top:0.75rem;">注意：合成 iNAV 为近似值，未纳入以下因素：管理费（每日约0.01%）、杠杆融资成本、每日再平衡损耗、底层合约展期成本。实际 iNAV 会略低于合成值，长期持仓偏差会累积。建议配合真实 iNAV 数据源校验。</p>
+                        <p class="note" style="margin-top:0.75rem;">注意：影子 iNAV 为近似值，未纳入管理费（每日约0.01%）、杠杆融资成本、每日再平衡损耗、底层合约展期成本。建议同时导入官方 iNAV + 海力士/汇率数据，系统会自动对比两者差异。</p>
                     </div>
                 </div>
             </div>
-        </section>
-
-        <!-- Block 4: Backtest Results -->
-        <section id="backtest-results" class="block hidden">
-            <h2>回测结果</h2>
-            <div id="stats-panel" class="stats-grid"></div>
-            <div class="charts-container">
-                <div class="chart-wrapper"><canvas id="equity-chart"></canvas></div>
-                <div class="chart-wrapper"><canvas id="premium-chart"></canvas></div>
-                <div class="chart-wrapper"><canvas id="pnl-chart"></canvas></div>
-            </div>
-            <h3 id="by-date-title" class="hidden" style="margin-top:1.5rem; margin-bottom:0.5rem; font-size:0.95rem;">按日汇总</h3>
-            <div id="by-date-container"></div>
-            <h3 style="margin-top:1.5rem; margin-bottom:0.5rem; font-size:0.95rem;">交易明细</h3>
-            <div id="trade-log-container"></div>
-        </section>
-
-        <!-- Block 5: Feasibility Conclusion -->
-        <section id="conclusion" class="block hidden">
-            <h2>可行性结论</h2>
-            <div id="traffic-light"></div>
-            <div id="conclusion-text"></div>
         </section>
 
         <!-- Appendix: Bloomberg Data Guide -->
@@ -253,58 +271,74 @@
             <h2>附录：Bloomberg 数据获取指南</h2>
 
             <div class="bbg-section">
-                <h3>1. 获取昨收价（基准）</h3>
-                <table class="formula-table">
-                    <thead><tr><th>数据</th><th>Ticker</th><th>Field</th></tr></thead>
-                    <tbody>
-                        <tr>
-                            <td>iNAV 昨收</td>
-                            <td><code>7709IV HK Equity</code></td>
-                            <td><code>PX_YEST_CLOSE</code></td>
-                        </tr>
-                        <tr>
-                            <td>ETF 昨收</td>
-                            <td><code>7709 HK Equity</code></td>
-                            <td><code>PX_YEST_CLOSE</code></td>
-                        </tr>
-                    </tbody>
-                </table>
-                <p class="bbg-cmd">Excel: <code>=BDP("7709IV HK Equity", "PX_YEST_CLOSE")</code></p>
+                <h3>1. 自动获取 iNAV Ticker</h3>
+                <p class="bbg-note">无需手动查找 iNAV ticker，使用 BDP 公式自动获取：</p>
+                <pre class="bbg-code">=BDP("7709 HK Equity", "ETF_INAV_TICKER")</pre>
+                <p class="bbg-note">返回值为 iNAV 的 Index ticker（如 <code>7709IV</code>），后续公式中拼接 <code>" Index"</code> 后缀即可使用。</p>
             </div>
 
             <div class="bbg-section">
-                <h3>2. 获取日内分钟数据</h3>
+                <h3>2. 获取日内 Tick 数据（BDH）</h3>
+                <p class="bbg-note">使用 BDH 函数拉取日内逐笔数据，支持 iNAV 和 ETF 成交价：</p>
                 <table class="formula-table">
-                    <thead><tr><th>数据</th><th>Ticker</th><th>操作</th><th>Records</th><th>Interval</th></tr></thead>
+                    <thead><tr><th>数据</th><th>BDH 公式</th></tr></thead>
                     <tbody>
                         <tr>
-                            <td>iNAV 分钟级</td>
-                            <td><code>7709IV HK Equity</code></td>
-                            <td><code>TICK &lt;GO&gt;</code></td>
-                            <td>Quote</td>
-                            <td>1 Min / 5 Min</td>
+                            <td>iNAV Tick</td>
+                            <td><code>=BDH(A1 & " Index", "TRADE", "2026-05-21 09:30:00", "2026-05-21 16:30:00", "IntrRw=True", "TZ=Hong_Kong", "Dts=S")</code></td>
                         </tr>
                         <tr>
                             <td>ETF 成交价</td>
-                            <td><code>7709 HK Equity</code></td>
-                            <td><code>TICK &lt;GO&gt;</code></td>
-                            <td>Trade</td>
-                            <td>1 Min / 5 Min</td>
+                            <td><code>=BDH("7709 HK Equity", "TRADE", "2026-05-21 09:30:00", "2026-05-21 16:30:00", "IntrRw=True", "TZ=Hong_Kong", "Dts=S")</code></td>
                         </tr>
                     </tbody>
                 </table>
-                <p class="bbg-note">iNAV 是发行商发布的指示性净值，通过 Quote 记录获取；ETF 实际成交价通过 Trade 记录获取。</p>
+                <p class="bbg-note">其中 <code>A1</code> 为步骤 1 中 BDP 返回的 iNAV ticker。修改日期和时间范围即可获取不同交易日的数据。</p>
             </div>
 
             <div class="bbg-section">
-                <h3>3. Excel 批量导出（BDH）</h3>
-                <pre class="bbg-code">=BDH("7709IV HK Equity","PX_LAST","20260518 09:30:00","20260518 16:00:00","BarSize=1","BarType=TRADE")</pre>
-                <p class="bbg-note">BarSize=1 为1分钟，改为5即5分钟。导出后粘贴到上方手动输入表格即可。</p>
+                <h3>3. BDH 参数说明</h3>
+                <table class="formula-table">
+                    <thead><tr><th>参数</th><th>含义</th><th>说明</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td><code>IntrRw=True</code></td>
+                            <td>日内逐行模式</td>
+                            <td>返回每个 tick 为一行（非聚合 bar），获取最细粒度数据</td>
+                        </tr>
+                        <tr>
+                            <td><code>TZ=Hong_Kong</code></td>
+                            <td>时区设置</td>
+                            <td>时间戳按香港时间显示，与港股交易时间一致</td>
+                        </tr>
+                        <tr>
+                            <td><code>Dts=S</code></td>
+                            <td>仅返回有数据的行</td>
+                            <td>跳过无成交的时间点，减少空行</td>
+                        </tr>
+                        <tr>
+                            <td><code>TRADE</code></td>
+                            <td>取成交价（Field）</td>
+                            <td>iNAV 和 ETF 均使用 TRADE 字段获取价格</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
             <div class="bbg-section">
-                <h3>4. 查找 iNAV Ticker</h3>
-                <p class="bbg-note">如不确定 iNAV ticker，在 Terminal 输入 <code>7709 HK Equity → RELS &lt;GO&gt;</code> 查看关联证券，找到 IOPV/iNAV 对应的 Index ticker。</p>
+                <h3>4. 完整 Excel 工作流</h3>
+                <ol class="bbg-steps">
+                    <li>单元格 A1 输入：<code>=BDP("7709 HK Equity", "ETF_INAV_TICKER")</code>（自动返回 iNAV ticker）</li>
+                    <li>单元格 B1 输入：<code>=BDH(A1 & " Index", "TRADE", "2026-05-21 09:30:00", "2026-05-21 16:30:00", "IntrRw=True", "TZ=Hong_Kong", "Dts=S")</code>（iNAV tick 数据向下展开）</li>
+                    <li>单元格 H1 输入：<code>=BDH("7709 HK Equity", "TRADE", "2026-05-21 09:30:00", "2026-05-21 16:30:00", "IntrRw=True", "TZ=Hong_Kong", "Dts=S")</code>（ETF 成交 tick 数据向下展开）</li>
+                    <li>两列数据按时间对齐后，导出为 CSV/Excel 导入本工具即可</li>
+                </ol>
+                <p class="bbg-note">提示：iNAV 数据覆盖 09:30–16:29，ETF 成交数据覆盖 09:30–16:08。导出后可直接使用上方"导入 Excel/CSV"功能。</p>
+            </div>
+
+            <div class="bbg-section">
+                <h3>5. 备选方法：Terminal TICK 查看</h3>
+                <p class="bbg-note">如只需快速查看（非批量导出），可在 Terminal 输入 <code>7709 HK Equity → TICK &lt;GO&gt;</code> 选择 Trade 记录查看 ETF 成交；输入 <code>7709IV Index → TICK &lt;GO&gt;</code> 查看 iNAV。</p>
             </div>
         </aside>
     </main>

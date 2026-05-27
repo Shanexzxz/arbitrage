@@ -75,6 +75,18 @@ function calculateMaxDrawdown(pnls) {
     return maxDD;
 }
 
+/**
+ * Simplified Sharpe Ratio (non-annualized, zero risk-free rate).
+ * Formula: mean(per-trade returns) / std(per-trade returns)
+ *
+ * Interpretation:
+ *   > 2.0: 优秀（每单位波动获得2倍以上收益）
+ *   > 1.0: 良好
+ *   0.5~1.0: 一般
+ *   < 0.5: 较差（收益不稳定）
+ *
+ * Note: 未年化处理，因日内套利持仓时间不固定；无风险利率视为0。
+ */
 function calculateSharpe(pnls) {
     const n = pnls.length;
     if (n < 2) return 0;

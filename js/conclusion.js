@@ -67,7 +67,7 @@ function identifyRisks(stats) {
     if (winRate < 50) risks.push(`胜率仅 ${winRate.toFixed(1)}%，低于50%，需靠大盈利覆盖频繁小亏损`);
     if (totalTrades < 5) risks.push('交易样本过少，统计结果不够可靠');
     if (profitLossRatio < 1) risks.push('盈亏比 < 1，平均亏损大于平均盈利');
-    if (sharpeRatio < 1) risks.push('夏普比率偏低，风险调整收益不佳');
+    if (sharpeRatio < 1) risks.push('夏普比率偏低（<1），单笔收益波动大');
 
     // Always mention structural risks
     risks.push('杠杆ETF存在每日复利衰减，长期持仓需注意');

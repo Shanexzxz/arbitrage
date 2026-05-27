@@ -163,9 +163,6 @@ function executeBacktest() {
     destroyCharts();
     renderCharts(data, trades);
 
-    // Shadow iNAV validation (when both official iNAV and Hynix+FX available)
-    renderShadowValidation(data);
-
     // Render trade log
     renderByDate(trades, analysis);
     renderTradeLog(trades);
@@ -335,6 +332,14 @@ function renderConclusion(conclusion) {
 
         <h3>优化建议</h3>
         <p>${conclusion.suggestion}</p>
+
+        <h3 style="margin-top:1rem;">指标说明</h3>
+        <div class="conclusion-metrics-note">
+            <p><strong>夏普比率</strong> = 每笔交易平均收益率 ÷ 收益率标准差（未年化，无风险利率=0）</p>
+            <p style="color:var(--color-text-muted); font-size:0.8rem;">衡量每承担一单位波动能获得多少收益。&gt;1.5 优秀，1~1.5 良好，0.5~1 一般，&lt;0.5 较差。</p>
+            <p><strong>最大回撤</strong> = 累计收益从最高点到最低点的最大跌幅</p>
+            <p><strong>胜率</strong> = 盈利交易次数 ÷ 总交易次数 × 100%</p>
+        </div>
     `;
 }
 
@@ -352,7 +357,7 @@ function renderShadowValidation(data) {
     const statsPanel = document.getElementById('shadow-validation-stats');
 
     // Filter rows that have both official iNAV and shadow calculation
-    const validRows = data.filter(r => r.inavSource === 'truth' && r.shadowInavChange !== null);
+    const validRows = data.filter(r => r.officialInavChange !== null && r.shadowInavChange !== null);
 
     if (validRows.length < 2) {
         section.classList.add('hidden');
@@ -397,7 +402,7 @@ function renderShadowValidation(data) {
     if (shadowBacktestChart) shadowBacktestChart.destroy();
 
     const labels = validRows.map(r => r.time || '');
-    const officialLine = validRows.map(r => r.inavChange);
+    const officialLine = validRows.map(r => r.officialInavChange);
     const shadowLine = validRows.map(r => r.shadowInavChange);
     const errorBars = errors;
 

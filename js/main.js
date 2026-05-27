@@ -621,9 +621,11 @@ function importBacktestFile(file) {
  * Merges iNAV ticks and ETF ticks by minute into unified rows.
  */
 function parseBBGBacktestData(rows) {
-    // Build time -> value maps
+    // Build time -> value maps for all detected columns
     const inavByMinute = new Map();
     const etfByMinute = new Map();
+    const kpByMinute = new Map();
+    const ktByMinute = new Map();
     let dateStr = '';
 
     for (const row of rows) {
@@ -639,19 +641,32 @@ function parseBBGBacktestData(rows) {
             const time = serialToTimeStr(row[7]);
             if (!etfByMinute.has(time)) etfByMinute.set(time, row[9]);
         }
+        // KP column (N=13, P=15) — 000660 KP Equity (main board)
+        if (row[13] && typeof row[13] === 'number' && row[13] > 40000 && row[15] != null) {
+            const time = serialToTimeStr(row[13]);
+            if (!kpByMinute.has(time)) kpByMinute.set(time, row[15]);
+        }
+        // KT column (T=19, V=21) — 000660 KT Equity (Next Trade)
+        if (row[19] && typeof row[19] === 'number' && row[19] > 40000 && row[21] != null) {
+            const time = serialToTimeStr(row[19]);
+            if (!ktByMinute.has(time)) ktByMinute.set(time, row[21]);
+        }
     }
 
     // Merge all unique times, sorted
-    const allTimes = [...new Set([...inavByMinute.keys(), ...etfByMinute.keys()])].sort();
+    const allTimes = [...new Set([
+        ...inavByMinute.keys(), ...etfByMinute.keys(),
+        ...kpByMinute.keys(), ...ktByMinute.keys()
+    ])].sort();
 
-    // Sample at 5-minute intervals to keep table manageable
+    // Sample at 5-minute intervals
     const sampledTimes = allTimes.filter(t => {
         const m = parseInt(t.split(':')[1], 10);
         return m % 5 === 0;
     });
 
-    // If still too many rows (>80), sample at 15-min intervals
-    const finalTimes = sampledTimes.length > 80
+    // If still too many rows (>100), sample at 15-min intervals
+    const finalTimes = sampledTimes.length > 100
         ? sampledTimes.filter(t => { const m = parseInt(t.split(':')[1], 10); return m % 15 === 0; })
         : sampledTimes;
 
@@ -660,12 +675,15 @@ function parseBBGBacktestData(rows) {
     const html = finalTimes.map(time => {
         const inav = inavByMinute.get(time);
         const etf = etfByMinute.get(time);
+        const kp = kpByMinute.get(time);
+        const kt = ktByMinute.get(time);
         const entry = {
             date: dateStr,
             time,
             inavPrice: inav != null ? inav.toFixed(4) : '',
-            hynixPrice: '',
-            fxRate: '',
+            hynixKP: kp != null ? String(kp) : '',
+            hynixKT: kt != null ? String(kt) : '',
+            fxRate: '0.00525',
             etfPrice: etf != null ? etf.toFixed(2) : '',
         };
         const cells = cols.map(c => {
@@ -678,10 +696,11 @@ function parseBBGBacktestData(rows) {
     }).join('');
     tbody.innerHTML = html;
 
-    const inavCount = [...finalTimes].filter(t => inavByMinute.has(t)).length;
-    const etfCount = [...finalTimes].filter(t => etfByMinute.has(t)).length;
+    const hasKP = kpByMinute.size > 0;
+    const hasKT = ktByMinute.size > 0;
+    const hynixInfo = hasKP && hasKT ? `KP+KT` : hasKP ? 'KP' : hasKT ? 'KT' : '无';
     setBtImportStatus(
-        `BBG格式已识别 — 导入 ${finalTimes.length} 行（${dateStr}），iNAV ${inavCount} 条，ETF ${etfCount} 条`,
+        `BBG格式已识别 — 导入 ${finalTimes.length} 行（${dateStr}），海力士: ${hynixInfo}`,
         'success'
     );
 }
@@ -1262,6 +1281,12 @@ function renderDashboard(data, threshold, analysis) {
     // Render divergence chart
     renderDivergenceChart(data, threshold);
 
+    // Render iNAV price comparison chart (official vs shadow HKD values)
+    renderInavComparisonChart(data);
+
+    // Render iNAV deviation chart (percentage difference)
+    renderInavValidationChart(data);
+
     // Render before/after stats
     renderPeriodStats('before-stats', analysis.before, threshold);
     renderPeriodStats('after-stats', analysis.after, threshold);
@@ -1414,6 +1439,209 @@ function renderDivergenceChart(data, threshold) {
                     ctx.fillText(labelText, xPos + 4, chartArea.top + 14);
                 }
 
+                ctx.restore();
+            }
+        }],
+    });
+}
+
+let inavComparisonChart = null;
+
+/**
+ * Render chart showing official iNAV and shadow iNAV actual HKD values over the full day.
+ * Visually demonstrates that official iNAV freezes after 14:30 while shadow (KT-based) continues.
+ */
+function renderInavComparisonChart(data) {
+    const canvas = document.getElementById('inav-comparison-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (inavComparisonChart) inavComparisonChart.destroy();
+
+    // We need rows that have both official iNAV and shadow iNAV data
+    // Official iNAV price = row.inavPrice
+    // Shadow iNAV price = baseInav * (1 + shadowInavChange/100)
+    // We can reconstruct shadow price from the first row's iNAV + shadowInavChange
+    const baseInav = data.length > 0 ? data[0].inavPrice : null;
+    if (!baseInav) {
+        canvas.parentElement.style.display = 'none';
+        inavComparisonChart = null;
+        return;
+    }
+
+    // Only show rows that have both official and shadow
+    const validRows = data.filter(r => r.inavPrice && r.shadowInavChange !== null);
+    if (validRows.length < 2) {
+        canvas.parentElement.style.display = 'none';
+        inavComparisonChart = null;
+        return;
+    }
+    canvas.parentElement.style.display = '';
+
+    const labels = validRows.map(r => r.time || '');
+    const officialLine = validRows.map(r => r.inavPrice);
+    const shadowLine = validRows.map(r => baseInav * (1 + r.shadowInavChange / 100));
+
+    // Find 14:30 cutoff
+    const cutoffIdx = validRows.findIndex(r => r.time && r.time > '14:30');
+
+    inavComparisonChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: '官方 iNAV (HKD)',
+                    data: officialLine,
+                    borderColor: '#2563eb',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    fill: false,
+                },
+                {
+                    label: '影子 iNAV (HKD)',
+                    data: shadowLine,
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    borderDash: [5, 3],
+                    fill: false,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                title: { display: true, text: '官方 iNAV vs 影子 iNAV（HKD 价格对比）' },
+                legend: { labels: { usePointStyle: true, pointStyle: 'line' } },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const val = ctx.parsed.y;
+                            return `${ctx.dataset.label}: ${val != null ? val.toFixed(2) : '-'}`;
+                        }
+                    }
+                },
+            },
+            scales: {
+                y: { title: { display: true, text: '价格 (HKD)' } },
+            },
+        },
+        plugins: [{
+            id: 'comparisonCutoff',
+            afterDraw(chart) {
+                if (cutoffIdx <= 0) return;
+                const { ctx, chartArea, scales } = chart;
+                const xPos = scales.x.getPixelForValue(cutoffIdx);
+                ctx.save();
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = '#ca8a04';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(xPos, chartArea.top);
+                ctx.lineTo(xPos, chartArea.bottom);
+                ctx.stroke();
+                ctx.fillStyle = '#ca8a04';
+                ctx.font = '11px sans-serif';
+                ctx.fillText('14:30', xPos + 4, chartArea.top + 14);
+                ctx.restore();
+            }
+        }],
+    });
+}
+
+let inavValidationChart = null;
+
+/**
+ * Render chart comparing official iNAV vs shadow iNAV deviation over time.
+ * Shows how the official iNAV diverges from reality (KT-based shadow) after 14:30.
+ */
+function renderInavValidationChart(data) {
+    const canvas = document.getElementById('inav-validation-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (inavValidationChart) inavValidationChart.destroy();
+
+    // Filter rows that have BOTH official and shadow iNAV changes
+    const validRows = data.filter(r => r.officialInavChange !== null && r.shadowInavChange !== null);
+
+    if (validRows.length < 2) {
+        canvas.parentElement.style.display = 'none';
+        inavValidationChart = null;
+        return;
+    }
+    canvas.parentElement.style.display = '';
+
+    const labels = validRows.map(r => r.time || '');
+    const deviations = validRows.map(r => r.shadowInavChange - r.officialInavChange);
+
+    // Find 14:30 cutoff index for vertical line
+    const cutoffIdx = validRows.findIndex(r => r.time && r.time > '14:30');
+
+    inavValidationChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: '影子iNAV vs 官方iNAV 偏差 (%)',
+                data: deviations,
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHitRadius: 10,
+                segment: {
+                    borderColor: (ctx) => {
+                        const idx = ctx.p1DataIndex;
+                        return (cutoffIdx > 0 && idx >= cutoffIdx) ? '#dc2626' : '#16a34a';
+                    }
+                },
+                fill: {
+                    target: { value: 0 },
+                    above: 'rgba(220, 38, 38, 0.06)',
+                    below: 'rgba(37, 99, 235, 0.06)',
+                },
+            }],
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                title: { display: true, text: '官方iNAV vs 影子iNAV 偏差（验证iNAV准确性）' },
+                legend: { labels: { usePointStyle: true, pointStyle: 'line' } },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const val = ctx.parsed.y;
+                            if (val == null) return '';
+                            return `偏差: ${val >= 0 ? '+' : ''}${val.toFixed(3)}%`;
+                        }
+                    }
+                },
+            },
+            scales: {
+                y: { title: { display: true, text: '偏差 (%)' } },
+            },
+        },
+        plugins: [{
+            id: 'inavCutoffLine',
+            afterDraw(chart) {
+                if (cutoffIdx <= 0) return;
+                const { ctx, chartArea, scales } = chart;
+                const xScale = scales.x;
+                const xPos = xScale.getPixelForValue(cutoffIdx);
+                ctx.save();
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = '#ca8a04';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(xPos, chartArea.top);
+                ctx.lineTo(xPos, chartArea.bottom);
+                ctx.stroke();
+                ctx.fillStyle = '#ca8a04';
+                ctx.font = '11px sans-serif';
+                ctx.fillText('14:30 韩国收盘', xPos + 4, chartArea.top + 14);
                 ctx.restore();
             }
         }],

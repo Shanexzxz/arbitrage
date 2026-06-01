@@ -1,6 +1,6 @@
 // js/main.js
 
-import { renderTable, renderBaseline, addRow, deleteLastRow, clearAll, parseData, validateData, getColumns, updateBacktestShadowColumn } from './data-input.js';
+import { renderTable, renderBaseline, addRow, deleteLastRow, clearAll, parseData, validateData, updateBacktestShadowColumn, renderRowHTML } from './data-input.js';
 import { runBacktest, analyzeDivergence, findChartMarkers } from './backtest-engine.js';
 import { calculateStatistics } from './statistics.js';
 import { renderCharts, destroyCharts } from './charts.js';
@@ -46,10 +46,10 @@ function init() {
     document.getElementById('bt-import').addEventListener('click', () => btFileInput.click());
     btFileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
+            // The dashboard refresh is fired from inside importBacktestFile()
+            // once the FileReader callback finishes — see post-render hook.
             importBacktestFile(e.target.files[0]);
             e.target.value = '';
-            // Auto-refresh dashboard after import
-            setTimeout(refreshDashboard, 100);
         }
     });
 
@@ -519,6 +519,7 @@ function downloadBacktestTemplate() {
  *   (日期 | 时间 | 海力士 | 汇率 | ETF) — detected by the header row.
  */
 function importBacktestFile(file) {
+    setBtImportStatus(`正在解析 ${(file.size/1024/1024).toFixed(1)} MB 文件…`, '');
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
@@ -536,12 +537,25 @@ function importBacktestFile(file) {
                 return;
             }
 
-            // Detect BBG BDH format: row[0] has col[1] as a large serial date (>40000)
-            // and col[2] === 'TRADE'
-            const firstRow = rows[0];
-            const isBBGFormat = firstRow &&
-                typeof firstRow[1] === 'number' && firstRow[1] > 40000 &&
-                String(firstRow[2] || '').toUpperCase() === 'TRADE';
+            // Detect BBG BDH "Value Page" format.
+            // BBG exports each ticker as a 3-column block:
+            //   col 0: serial datetime, col 1: 'TRADE', col 2: numeric value
+            // The first row usually carries the ticker name (e.g. '7709IV Index')
+            // somewhere in the first few cells. We scan the first ~3 rows for any
+            // recognized ticker token; if found, use the BBG parser.
+            const TICKER_REGEX = /(7709IV|7709\s*HK|000660\s*KP|000660\s*KT|KRW(\s|HKD)*Curncy)/i;
+            const isBBGFormat = (() => {
+                // Sniff the first 3 rows for any ticker tag + at least one TRADE cell
+                for (let r = 0; r < Math.min(3, rows.length); r++) {
+                    const row = rows[r] || [];
+                    const joined = row.map(c => String(c ?? '')).join(' | ');
+                    if (TICKER_REGEX.test(joined)) return true;
+                }
+                // Fallback: legacy detection (col 1 is serial date + col 2 === 'TRADE')
+                const firstRow = rows[0] || [];
+                return typeof firstRow[1] === 'number' && firstRow[1] > 40000 &&
+                    String(firstRow[2] || '').toUpperCase() === 'TRADE';
+            })();
 
             if (isBBGFormat) {
                 parseBBGBacktestData(rows);
@@ -563,40 +577,32 @@ function importBacktestFile(file) {
                 return;
             }
 
-            // Map each raw row to the 6-column entry shape used by the table.
+            // Map each raw row to the entry shape used by the table.
+            // Legacy templates use a single "海力士股价" column; we mirror it
+            // into both KP and KT so downstream KP-fallback-to-KT logic works.
             const mapRow = (r) => {
                 const date = normalizeDate(r[0]);
                 const time = normalizeTime(r[1]);
                 const v = (i) => (r[i] != null && r[i] !== '' ? String(r[i]) : '');
+                let hx = '', fxRate = '', inavPrice = '', etfPrice = '';
                 if (colCount >= 6 || (headerHasInav && colCount > 4)) {
-                    // Modern 6-column layout
-                    return { date, time, inavPrice: v(2), hynixPrice: v(3), fxRate: v(4), etfPrice: v(5) };
+                    // Modern 6-column layout: 日期|时间|iNAV|海力士|汇率|ETF
+                    inavPrice = v(2); hx = v(3); fxRate = v(4); etfPrice = v(5);
+                } else if (headerHasInav) {
+                    // Legacy: 日期|时间|iNAV|ETF
+                    inavPrice = v(2); etfPrice = v(3);
+                } else if (headerHasHynix) {
+                    // Legacy: 日期|时间|海力士|汇率|ETF
+                    hx = v(2); fxRate = v(3); etfPrice = v(4);
+                } else {
+                    // Unknown: best-effort
+                    inavPrice = v(2); hx = v(3); fxRate = v(4); etfPrice = v(5);
                 }
-                if (headerHasInav) {
-                    // Legacy: 日期 | 时间 | iNAV | ETF
-                    return { date, time, inavPrice: v(2), hynixPrice: '', fxRate: '', etfPrice: v(3) };
-                }
-                if (headerHasHynix) {
-                    // Legacy: 日期 | 时间 | 海力士 | 汇率 | ETF
-                    return { date, time, inavPrice: '', hynixPrice: v(2), fxRate: v(3), etfPrice: v(4) };
-                }
-                // Unknown: treat as modern layout best-effort
-                return { date, time, inavPrice: v(2), hynixPrice: v(3), fxRate: v(4), etfPrice: v(5) };
+                return { date, time, inavPrice, hynixKP: hx, hynixKT: hx, fxRate, etfPrice };
             };
 
-            const cols = getColumns();
             const tbody = document.getElementById('data-tbody');
-            const html = dataRows.map(r => {
-                const entry = mapRow(r);
-                const cells = cols.map(c => {
-                    const value = entry[c.key] !== undefined ? entry[c.key] : '';
-                    const readonlyAttr = c.readonly ? 'readonly tabindex="-1"' : '';
-                    const cls = c.readonly ? ' class="shadow-cell"' : '';
-                    return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${value}" ${readonlyAttr}${cls}></td>`;
-                }).join('');
-                return `<tr>${cells}</tr>`;
-            }).join('');
-            tbody.innerHTML = html;
+            tbody.innerHTML = dataRows.map(r => renderRowHTML(mapRow(r))).join('');
 
             const uniqueDates = new Set(
                 dataRows.map(r => normalizeDate(r[0])).filter(d => d !== '')
@@ -612,6 +618,8 @@ function importBacktestFile(file) {
             } else {
                 setBtImportStatus(`已导入 ${dataRows.length} 行（无日期列，按单日处理）${layoutHint}`, 'success');
             }
+            updateBacktestShadowColumn();
+            refreshDashboard();
         } catch (err) {
             setBtImportStatus('文件解析失败: ' + err.message, 'error');
         }
@@ -620,111 +628,269 @@ function importBacktestFile(file) {
 }
 
 /**
- * Parse BBG BDH format (raw tick export from Bloomberg Excel).
- * Layout: ColA=ticker, ColB=serial_datetime, ColC="TRADE", ColD=iNAV_value, ColE=0
- *         ColG=ticker, ColH=serial_datetime, ColI="TRADE", ColJ=ETF_value, ColK=0
- * Merges iNAV ticks and ETF ticks by minute into unified rows.
+ * Parse BBG BDH "Value Page" export.
+ *
+ * Column blocks (each ticker occupies 3 consecutive columns):
+ *   [serial_datetime, "TRADE", numeric_value]
+ *
+ * The ticker name appears somewhere on the first row (or a header row)
+ * inside its block — we auto-detect the role of each block by scanning
+ * for ticker keywords:
+ *   7709IV          -> iNAV (15-second grid)
+ *   7709 HK Equity  -> ETF tick
+ *   000660 KP       -> Hynix KOSPI tick (main board, 09:00-14:30 KST)
+ *   000660 KT       -> Hynix Next Trade tick (08:00-20:00 KST)
+ *   KRW Curncy      -> KRW/HKD FX tick
+ *
+ * Workflow:
+ *   1. Each ticker -> a sorted [{ts, val}] tick list (ts = ms-since-epoch).
+ *   2. Use iNAV's 15s timestamps as the master time grid.
+ *   3. For ETF/KP/KT/FX: forward-fill (LOCF) the latest tick at-or-before
+ *      each iNAV timestamp.
+ *   4. Downsample the master grid to 1 row/minute (keep the LAST 15s tick of
+ *      each minute, so 09:30 row uses the 09:30:45 iNAV value).
  */
 function parseBBGBacktestData(rows) {
-    // Build time -> value maps for all detected columns
-    const inavByMinute = new Map();
-    const etfByMinute = new Map();
-    const kpByMinute = new Map();
-    const ktByMinute = new Map();
-    let dateStr = '';
+    const blocks = detectBBGTickerBlocks(rows);
 
-    for (const row of rows) {
-        // iNAV column (B=1, D=3)
-        if (row[1] && typeof row[1] === 'number' && row[1] > 40000 && row[3] != null) {
-            if (!dateStr) dateStr = serialToDateStr(row[1]);
-            const time = serialToTimeStr(row[1]);
-            if (!inavByMinute.has(time)) inavByMinute.set(time, row[3]);
-        }
-        // ETF column (H=7, J=9)
-        if (row[7] && typeof row[7] === 'number' && row[7] > 40000 && row[9] != null) {
-            if (!dateStr) dateStr = serialToDateStr(row[7]);
-            const time = serialToTimeStr(row[7]);
-            if (!etfByMinute.has(time)) etfByMinute.set(time, row[9]);
-        }
-        // KP column (N=13, P=15) — 000660 KP Equity (main board)
-        if (row[13] && typeof row[13] === 'number' && row[13] > 40000 && row[15] != null) {
-            const time = serialToTimeStr(row[13]);
-            if (!kpByMinute.has(time)) kpByMinute.set(time, row[15]);
-        }
-        // KT column (T=19, V=21) — 000660 KT Equity (Next Trade)
-        if (row[19] && typeof row[19] === 'number' && row[19] > 40000 && row[21] != null) {
-            const time = serialToTimeStr(row[19]);
-            if (!ktByMinute.has(time)) ktByMinute.set(time, row[21]);
-        }
+    if (!blocks.inav || blocks.inav.ticks.length === 0) {
+        setBtImportStatus('未识别到 7709IV (iNAV) 列，无法以 iNAV 为主轴对齐', 'error');
+        return;
     }
 
-    // Merge all unique times, sorted
-    const allTimes = [...new Set([
-        ...inavByMinute.keys(), ...etfByMinute.keys(),
-        ...kpByMinute.keys(), ...ktByMinute.keys()
-    ])].sort();
+    const inavTicks = blocks.inav.ticks;            // 15s-grid master
+    const etfTicks  = blocks.etf?.ticks  || [];
+    const kpTicks   = blocks.kp?.ticks   || [];
+    const ktTicks   = blocks.kt?.ticks   || [];
 
-    // Sample at 5-minute intervals
-    const sampledTimes = allTimes.filter(t => {
-        const m = parseInt(t.split(':')[1], 10);
-        return m % 5 === 0;
+    // BBG "KRW Curncy" returns KRW per USD (~1500), not KRW/HKD (~0.0052).
+    // Convert to HKD per KRW using a flat USD/HKD = 7.8 constant — the HKD peg
+    // band (7.75-7.85) keeps this within a few bps, well below the arbitrage
+    // signal threshold. Downstream uses only the % change, so the multiplier
+    // cancels in the ratio.
+    const USD_HKD = 7.8;
+    const fxTicksRaw = blocks.fx?.ticks || [];
+    const fxTicks = fxTicksRaw.map(t => ({
+        ts: t.ts,
+        val: USD_HKD / t.val,    // HKD per KRW = USD/HKD ÷ KRW per USD
+    }));
+
+    // Pre-compute a forward-fill cursor per series
+    const ffCursor = (ticks) => {
+        let i = 0;
+        return (ts) => {
+            while (i + 1 < ticks.length && ticks[i + 1].ts <= ts) i++;
+            if (ticks.length === 0) return null;
+            return ticks[i].ts <= ts ? ticks[i].val : null;
+        };
+    };
+    const ffEtf = ffCursor(etfTicks);
+    const ffKp  = ffCursor(kpTicks);
+    const ffKt  = ffCursor(ktTicks);
+    const ffFx  = ffCursor(fxTicks);
+
+    // KP (KOSPI main board) closes after 14:30 — beyond that we deliberately
+    // leave the cell blank instead of LOCF-filling, so the table makes it
+    // visually clear that no further main-board trades happened. The backtest
+    // engine handles missing KP by falling back to KT (Next Trade).
+    const KP_CUTOFF = '14:30';
+
+    // 1) Build aligned 15s-grid rows from iNAV
+    const aligned = inavTicks.map(t => {
+        const time = tsToTimeStr(t.ts);    // HH:MM
+        return {
+            ts: t.ts,
+            date: tsToDateStr(t.ts),
+            time,
+            inav: t.val,
+            etf: ffEtf(t.ts),
+            kp:  time > KP_CUTOFF ? null : ffKp(t.ts),
+            kt:  ffKt(t.ts),
+            fx:  ffFx(t.ts),
+        };
     });
 
-    // If still too many rows (>100), sample at 15-min intervals
-    const finalTimes = sampledTimes.length > 100
-        ? sampledTimes.filter(t => { const m = parseInt(t.split(':')[1], 10); return m % 15 === 0; })
-        : sampledTimes;
+    // 2) Downsample to 1 row per minute — keep the FIRST tick of each minute
+    //    (e.g. 09:30:00 snapshot, not 09:30:45). This makes the day's first
+    //    row the true open-snapshot baseline; all change-vs-baseline % are
+    //    measured against the actual 09:30:00 prices, with no 45-second
+    //    look-ahead leakage.
+    const byMinute = new Map();
+    for (const a of aligned) {
+        const key = `${a.date} ${a.time}`;
+        if (!byMinute.has(key)) byMinute.set(key, a); // first wins
+    }
+    let finalRows = [...byMinute.values()].sort((x, y) => x.ts - y.ts);
 
-    const cols = getColumns();
+    // 3) Trim per-day leading rows where ETF is still absent.
+    //    Otherwise the day's first row (used as baseline by resolveDay) would
+    //    have no ETF price, which the backtest engine treats as fatal.
+    finalRows = trimLeadingNoEtfRowsPerDay(finalRows);
+
+    // 4) Determine FX fallback (when no KRW Curncy block in this file)
+    const hasFx = fxTicks.length > 0;
+    const FX_FALLBACK = '0.00525';
+
+    // 5) Render to the table (replace existing rows)
     const tbody = document.getElementById('data-tbody');
-    const html = finalTimes.map(time => {
-        const inav = inavByMinute.get(time);
-        const etf = etfByMinute.get(time);
-        const kp = kpByMinute.get(time);
-        const kt = ktByMinute.get(time);
-        const entry = {
-            date: dateStr,
-            time,
-            inavPrice: inav != null ? inav.toFixed(4) : '',
-            hynixKP: kp != null ? String(kp) : '',
-            hynixKT: kt != null ? String(kt) : '',
-            fxRate: '0.00525',
-            etfPrice: etf != null ? etf.toFixed(2) : '',
-        };
-        const cells = cols.map(c => {
-            const value = entry[c.key] !== undefined ? entry[c.key] : '';
-            const readonlyAttr = c.readonly ? 'readonly tabindex="-1"' : '';
-            const cls = c.readonly ? ' class="shadow-cell"' : '';
-            return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${value}" ${readonlyAttr}${cls}></td>`;
-        }).join('');
-        return `<tr>${cells}</tr>`;
+    tbody.innerHTML = finalRows.map(r => {
+        const fxVal = (r.fx != null) ? r.fx.toFixed(6) : (hasFx ? '' : FX_FALLBACK);
+        return renderRowHTML({
+            date: r.date,
+            time: r.time,
+            inavPrice: r.inav != null ? r.inav.toFixed(4) : '',
+            hynixKP: r.kp != null ? String(Math.round(r.kp)) : '',
+            hynixKT: r.kt != null ? String(Math.round(r.kt)) : '',
+            fxRate: fxVal,
+            etfPrice: r.etf != null ? r.etf.toFixed(2) : '',
+        });
     }).join('');
-    tbody.innerHTML = html;
 
-    const hasKP = kpByMinute.size > 0;
-    const hasKT = ktByMinute.size > 0;
-    const hynixInfo = hasKP && hasKT ? `KP+KT` : hasKP ? 'KP' : hasKT ? 'KT' : '无';
+    // 6) Status line — show coverage details
+    const dateSet = new Set(finalRows.map(r => r.date));
+    const dateInfo = dateSet.size === 1
+        ? [...dateSet][0]
+        : `${dateSet.size} 天`;
+    const parts = [];
+    parts.push(`iNAV ${inavTicks.length} ticks`);
+    if (etfTicks.length) parts.push(`ETF ${etfTicks.length}`);
+    if (kpTicks.length)  parts.push(`KP ${kpTicks.length}`);
+    if (ktTicks.length)  parts.push(`KT ${ktTicks.length}`);
+    if (fxTicks.length)  parts.push(`FX ${fxTicks.length}`);
+    else                  parts.push(`FX(回退${FX_FALLBACK})`);
+
     setBtImportStatus(
-        `BBG格式已识别 — 导入 ${finalTimes.length} 行（${dateStr}），海力士: ${hynixInfo}`,
+        `BBG Value Page 已识别 — 导入 ${finalRows.length} 行（${dateInfo}，1分钟粒度）｜${parts.join(' / ')}`,
         'success'
     );
+
+    // Recompute shadow iNAV column + dashboard charts now that the table is filled
+    updateBacktestShadowColumn();
+    refreshDashboard();
 }
 
 /**
- * Convert Excel serial datetime to 'YYYY-MM-DD'.
+ * Drop rows from the front of each trading day until ETF has its first tick.
+ * The backtest engine uses each day's first row as the baseline, and a missing
+ * ETF baseline aborts the whole day.
  */
-function serialToDateStr(serial) {
-    const d = new Date((serial - 25569) * 86400 * 1000);
-    return d.toISOString().slice(0, 10);
+function trimLeadingNoEtfRowsPerDay(rows) {
+    const seenEtfPerDay = new Set();
+    const out = [];
+    for (const r of rows) {
+        if (r.etf != null) seenEtfPerDay.add(r.date);
+        if (seenEtfPerDay.has(r.date)) out.push(r);
+    }
+    return out;
 }
 
 /**
- * Convert Excel serial datetime to 'HH:MM'.
+ * Scan rows and return ticker -> { ticks: [{ts, val}] } blocks.
+ *
+ * Strategy: walk first ~5 rows looking for a cell that matches a ticker keyword,
+ * then assume the ticker's data block starts at that column or the next.
+ * Each block is 3 columns: [datetime_serial, 'TRADE', value].
+ *
+ * To be robust, we try the matched column AND its neighbors (+/-1, +/-2) and
+ * pick the offset that yields the most valid (datetime, TRADE, number) rows.
  */
-function serialToTimeStr(serial) {
-    const totalSeconds = Math.round((serial % 1) * 86400);
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
+function detectBBGTickerBlocks(rows) {
+    const TICKERS = [
+        { key: 'inav', re: /7709\s*IV/i,           label: '7709IV' },
+        { key: 'etf',  re: /7709\s*HK/i,           label: '7709 HK' },
+        { key: 'kp',   re: /000660\s*KP/i,         label: '000660 KP' },
+        { key: 'kt',   re: /000660\s*KT/i,         label: '000660 KT' },
+        { key: 'fx',   re: /KRW(\s|HKD)*Curncy/i,  label: 'KRW Curncy' },
+    ];
+
+    // Find candidate starting columns for each ticker by scanning the first few rows.
+    const headerRows = rows.slice(0, 5);
+    const candidates = {};
+    for (const t of TICKERS) {
+        const cands = new Set();
+        for (const row of headerRows) {
+            if (!row) continue;
+            for (let c = 0; c < row.length; c++) {
+                const cell = String(row[c] ?? '');
+                if (t.re.test(cell)) cands.add(c);
+            }
+        }
+        candidates[t.key] = [...cands];
+    }
+
+    // For each ticker, scan all rows starting from each candidate column-offset
+    // and try offsets {-2,-1,0,1,2} for the date column, then pick whichever
+    // produces the most ticks. The block is [date, 'TRADE', value].
+    const result = {};
+    for (const t of TICKERS) {
+        let best = { ticks: [], startCol: -1 };
+        for (const c of candidates[t.key]) {
+            for (const off of [0, -2, -1, 1, 2]) {
+                const startCol = c + off;
+                if (startCol < 0) continue;
+                const ticks = extractTickBlock(rows, startCol);
+                if (ticks.length > best.ticks.length) {
+                    best = { ticks, startCol };
+                }
+            }
+        }
+        if (best.ticks.length > 0) {
+            // sort by timestamp ascending
+            best.ticks.sort((a, b) => a.ts - b.ts);
+            result[t.key] = best;
+        }
+    }
+    return result;
+}
+
+/**
+ * Extract a [datetime_serial, 'TRADE', numeric_value] block starting at column
+ * `startCol`. Returns [{ts: ms, val: number}] for every valid row.
+ *
+ * BBG often forward-fills the same (ts, val) across thousands of consecutive
+ * rows when aligning to a master grid (e.g. KP keeps repeating its last trade
+ * once a minute). We collapse such immediate duplicates to keep tick lists
+ * lean — the LOCF cursor downstream produces identical results either way.
+ */
+function extractTickBlock(rows, startCol) {
+    const out = [];
+    let lastTs = -1;
+    let lastVal = NaN;
+    for (const row of rows) {
+        if (!row) continue;
+        const dtCell  = row[startCol];
+        const tagCell = row[startCol + 1];
+        const valCell = row[startCol + 2];
+        if (typeof dtCell !== 'number' || dtCell <= 40000) continue;
+        if (String(tagCell ?? '').toUpperCase() !== 'TRADE') continue;
+        if (typeof valCell !== 'number' || !isFinite(valCell)) continue;
+        const ts = serialToMs(dtCell);
+        if (ts === lastTs && valCell === lastVal) continue;       // exact dup
+        out.push({ ts, val: valCell });
+        lastTs = ts;
+        lastVal = valCell;
+    }
+    return out;
+}
+
+/**
+ * Excel serial datetime -> JS Date ms-since-epoch (UTC).
+ * Excel epoch is 1899-12-30; serial uses 1-based days in local time. We treat
+ * the serial as a UTC instant for ordering purposes (all tickers are exported
+ * with the same TZ=Hong_Kong from BBG, so cross-ticker comparisons are valid).
+ */
+function serialToMs(serial) {
+    return Math.round((serial - 25569) * 86400 * 1000);
+}
+
+function tsToDateStr(ts) {
+    return new Date(ts).toISOString().slice(0, 10);
+}
+
+function tsToTimeStr(ts) {
+    const d = new Date(ts);
+    const h = d.getUTCHours();
+    const m = d.getUTCMinutes();
     return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
@@ -1439,8 +1605,8 @@ function renderDivergenceChart(data, threshold) {
                     ctx.font = '11px sans-serif';
                     const xPos = xScale.getPixelForValue(cutoffIndices[0]);
                     const labelText = cutoffIndices.length > 1
-                        ? `14:30 韩国收盘 (×${cutoffIndices.length})`
-                        : '14:30 韩国收盘';
+                        ? `14:30 主板收盘 (×${cutoffIndices.length})`
+                        : '14:30 主板收盘';
                     ctx.fillText(labelText, xPos + 4, chartArea.top + 14);
                 }
 
@@ -1646,7 +1812,7 @@ function renderInavValidationChart(data) {
                 ctx.stroke();
                 ctx.fillStyle = '#ca8a04';
                 ctx.font = '11px sans-serif';
-                ctx.fillText('14:30 韩国收盘', xPos + 4, chartArea.top + 14);
+                ctx.fillText('14:30 主板收盘', xPos + 4, chartArea.top + 14);
                 ctx.restore();
             }
         }],

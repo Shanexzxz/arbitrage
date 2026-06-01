@@ -10,3 +10,7 @@ server/node_modules/
 server.log
 server.log.*
 watchdog.log
+
+# raw market data dumps (not for git)
+*.xlsx
+*.xls

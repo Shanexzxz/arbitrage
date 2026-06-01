@@ -9,7 +9,7 @@ import { generateConclusion } from './conclusion.js';
 function getParams() {
     return {
         threshold: parseFloat(document.getElementById('threshold').value) || 1.5,
-        txCost: parseFloat(document.getElementById('tx-cost').value) || 0.2,
+        swapCost: parseFloat(document.getElementById('swap-cost').value) || 0.4,
         tradeAmount: parseFloat(document.getElementById('trade-amount').value) || 100000,
     };
 }
@@ -136,13 +136,15 @@ function executeBacktest() {
     // Show and render dashboard
     renderDashboard(data, params.threshold, analysis);
 
-    // Run backtest engine
-    const trades = runBacktest(data, params);
+    // Run swap engine
+    const swaps = runBacktest(data, params);
 
     // Calculate results
-    const totalProfitHKD = trades.reduce((s, t) => s + t.profitHKD, 0);
-    const profitableTrades = trades.filter(t => t.netProfit > 0);
+    const totalProfitHKD = swaps.reduce((s, t) => s + t.profitHKD, 0);
+    const profitableSwaps = swaps.filter(t => t.netProfit > 0);
     const dayCount = analysis.byDate.length;
+    const upSwaps = swaps.filter(t => t.direction === 'sell_etf_buy_stock').length;
+    const downSwaps = swaps.filter(t => t.direction === 'buy_etf_sell_stock').length;
 
     // Show results section
     const resultsSection = document.getElementById('backtest-results');
@@ -151,9 +153,11 @@ function executeBacktest() {
     // Render simplified stats
     renderStatsPanel({
         totalProfitHKD,
-        totalTrades: trades.length,
-        profitableTrades: profitableTrades.length,
-        avgProfit: trades.length > 0 ? totalProfitHKD / trades.length : 0,
+        totalSwaps: swaps.length,
+        profitableSwaps: profitableSwaps.length,
+        avgProfit: swaps.length > 0 ? totalProfitHKD / swaps.length : 0,
+        upSwaps,
+        downSwaps,
         beforeCount: analysis.before.signalCount,
         afterCount: analysis.after.signalCount,
         dayCount,
@@ -161,14 +165,14 @@ function executeBacktest() {
 
     // Render charts
     destroyCharts();
-    renderCharts(data, trades);
+    renderCharts(data, swaps);
 
-    // Render trade log
-    renderByDate(trades, analysis);
-    renderTradeLog(trades);
+    // Render swap log
+    renderByDate(swaps, analysis);
+    renderTradeLog(swaps);
 
     // Generate and show conclusion
-    const stats = calculateStatistics(trades.map(t => ({ pnl: t.netProfit })));
+    const stats = calculateStatistics(swaps.map(t => ({ pnl: t.netProfit })));
     const conclusion = generateConclusion(stats);
     renderConclusion(conclusion);
 }
@@ -177,12 +181,14 @@ function renderStatsPanel(stats) {
     const panel = document.getElementById('stats-panel');
     const items = [
         { label: '覆盖天数', value: `${stats.dayCount} 天`, hint: '回测数据涉及的交易日数' },
-        { label: '总套利收益', value: `${stats.totalProfitHKD.toFixed(0)} HKD`, hint: '所有调仓交易的累计净收益' },
-        { label: '信号触发', value: `${stats.totalTrades} 次`, hint: '背离超阈值的调仓次数' },
-        { label: '有效交易', value: `${stats.profitableTrades} 次`, hint: '扣除费用后仍盈利的交易' },
-        { label: '平均单次收益', value: `${stats.avgProfit.toFixed(0)} HKD`, hint: '总收益 / 交易次数' },
-        { label: '14:30前信号', value: `${stats.beforeCount} 次`, hint: '韩国主板交易时段的信号（多日累计）' },
-        { label: '14:30后信号', value: `${stats.afterCount} 次`, hint: '韩国主板收盘后的信号（多日累计）' },
+        { label: '总锁定收益', value: `${stats.totalProfitHKD.toFixed(0)} HKD`, hint: '所有换仓的累计净收益（已扣手续费）' },
+        { label: '换仓次数', value: `${stats.totalSwaps} 次`, hint: '触发阈值且通过滞回检查的换仓总次数' },
+        { label: '盈利换仓', value: `${stats.profitableSwaps} 次`, hint: '锁定毛利 > 单笔成本的换仓数' },
+        { label: '平均单次收益', value: `${stats.avgProfit.toFixed(0)} HKD`, hint: '总收益 / 换仓次数' },
+        { label: '卖ETF换仓', value: `${stats.upSwaps} 次`, hint: 'ETF 高估时把 ETF 换回 Hynix 底仓' },
+        { label: '买ETF换仓', value: `${stats.downSwaps} 次`, hint: 'ETF 折价时把 Hynix 底仓换成 ETF' },
+        { label: '14:30前信号', value: `${stats.beforeCount} 次`, hint: '主板（KP）连续竞价时段超阈值的次数（统计口径，不等于换仓）' },
+        { label: '14:30后信号', value: `${stats.afterCount} 次`, hint: '主板收盘后（仅 Next Trade 在盘）超阈值的次数' },
     ];
 
     panel.innerHTML = items.map(item => `
@@ -220,7 +226,6 @@ function renderByDate(trades, analysis) {
         const tList = tradesByDate.get(day.date) || [];
         const dayPnl = tList.reduce((s, t) => s + t.profitHKD, 0);
         const wins = tList.filter(t => t.netProfit > 0).length;
-        const winRate = tList.length > 0 ? (wins / tList.length) * 100 : 0;
         const pnlColor = dayPnl >= 0 ? '#16a34a' : '#dc2626';
         return `
             <tr>
@@ -228,7 +233,7 @@ function renderByDate(trades, analysis) {
                 <td>${day.count}</td>
                 <td>${day.signalCount}</td>
                 <td>${tList.length}</td>
-                <td>${wins} / ${tList.length} (${winRate.toFixed(0)}%)</td>
+                <td>${wins}</td>
                 <td style="color:#dc2626">${day.maxPremium.toFixed(2)}%</td>
                 <td style="color:#2563eb">${day.maxDiscount.toFixed(2)}%</td>
                 <td>${day.avgAbs.toFixed(2)}%</td>
@@ -244,12 +249,12 @@ function renderByDate(trades, analysis) {
                     <th>日期</th>
                     <th>数据点</th>
                     <th>超阈值</th>
-                    <th>交易数</th>
-                    <th>胜率</th>
+                    <th>换仓数</th>
+                    <th>盈利换仓</th>
                     <th>最大溢价</th>
                     <th>最大折价</th>
                     <th>平均|偏离|</th>
-                    <th>当日收益</th>
+                    <th>当日净利</th>
                 </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -257,27 +262,32 @@ function renderByDate(trades, analysis) {
     `;
 }
 
-function renderTradeLog(trades) {
+function renderTradeLog(swaps) {
     const container = document.getElementById('trade-log-container');
 
-    if (trades.length === 0) {
-        container.innerHTML = '<p style="text-align:center;color:#64748b;">无交易记录</p>';
+    if (swaps.length === 0) {
+        container.innerHTML = '<p style="text-align:center;color:#64748b;">无换仓记录</p>';
         return;
     }
 
-    const rows = trades.map((t, i) => `
+    const rows = swaps.map((t, i) => {
+        const dirText = t.direction === 'sell_etf_buy_stock'
+            ? '<span style="color:#dc2626">卖 ETF / 买 Hynix</span>'
+            : '<span style="color:#2563eb">买 ETF / 卖 Hynix 底仓</span>';
+        const pnlColor = t.netProfit >= 0 ? '#16a34a' : '#dc2626';
+        return `
         <tr>
             <td>${i + 1}</td>
             <td>${t.date && t.date !== '__single__' ? t.date : '-'}</td>
-            <td>${t.entryTime || t.entryIndex}</td>
-            <td>${t.exitTime || t.exitIndex}</td>
-            <td>${t.direction === 'sell_etf_buy_stock' ? '卖ETF/买股票' : '买ETF/卖股票'}</td>
-            <td>${t.entryPremium.toFixed(2)}%</td>
-            <td>${t.exitPremium.toFixed(2)}%</td>
-            <td style="color:${t.netProfit >= 0 ? '#16a34a' : '#dc2626'}">${t.profitHKD.toFixed(0)} HKD</td>
-            <td>${formatExitReason(t.exitReason)}</td>
-        </tr>
-    `).join('');
+            <td>${t.swapTime || t.swapIndex}</td>
+            <td>${dirText}</td>
+            <td>${t.premium >= 0 ? '+' : ''}${t.premium.toFixed(3)}%</td>
+            <td>${t.rawProfit.toFixed(3)}%</td>
+            <td style="color:#94a3b8">-${t.swapCost.toFixed(2)}%</td>
+            <td style="color:${pnlColor}; font-weight:600">${t.netProfit.toFixed(3)}%</td>
+            <td style="color:${pnlColor}; font-weight:600">${t.profitHKD.toFixed(0)} HKD</td>
+        </tr>`;
+    }).join('');
 
     container.innerHTML = `
         <table>
@@ -285,28 +295,18 @@ function renderTradeLog(trades) {
                 <tr>
                     <th>#</th>
                     <th>日期</th>
-                    <th>调仓时间</th>
-                    <th>回归时间</th>
+                    <th>换仓时间</th>
                     <th>方向</th>
-                    <th>入场背离</th>
-                    <th>出场背离</th>
-                    <th>收益</th>
-                    <th>退出原因</th>
+                    <th>触发时偏离</th>
+                    <th>锁定毛利</th>
+                    <th>换仓成本</th>
+                    <th>净利%</th>
+                    <th>净利 HKD</th>
                 </tr>
             </thead>
             <tbody>${rows}</tbody>
         </table>
     `;
-}
-
-function formatExitReason(reason) {
-    const map = {
-        'reversion': '背离回归',
-        'cross_zero': '穿越零轴',
-        'end_of_day': '当日收盘',
-        'end_of_data': '数据结束',
-    };
-    return map[reason] || reason;
 }
 
 function renderConclusion(conclusion) {

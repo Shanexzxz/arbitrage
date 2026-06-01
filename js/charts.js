@@ -47,15 +47,16 @@ function renderEquityChart(data, trades) {
     const labels = buildAxisLabels(data);
 
     // Build cumulative equity curve on the full timeline.
-    // Value steps at each trade's EXIT index; flat between trades.
+    // Value steps at each swap's index; flat between swaps.
     const cumulative = new Array(data.length).fill(null);
     cumulative[0] = 0;
 
     let sum = 0;
     for (const trade of trades) {
         sum += (trade.netProfit !== undefined ? trade.netProfit : trade.pnl) || 0;
-        if (trade.exitIndex < data.length) {
-            cumulative[trade.exitIndex] = sum;
+        const idx = trade.swapIndex !== undefined ? trade.swapIndex : trade.exitIndex;
+        if (idx != null && idx < data.length) {
+            cumulative[idx] = sum;
         }
     }
 
@@ -112,12 +113,14 @@ function renderPremiumChart(data, trades) {
     const premiums = data.map(d => d.premiumDiscount);
     const { dayBoundaries, cutoffIndices } = findChartMarkers(data);
 
-    // Mark entry/exit points
-    const entryPoints = new Array(data.length).fill(null);
-    const exitPoints = new Array(data.length).fill(null);
-    for (const trade of trades) {
-        if (trade.entryIndex < data.length) entryPoints[trade.entryIndex] = premiums[trade.entryIndex];
-        if (trade.exitIndex < data.length) exitPoints[trade.exitIndex] = premiums[trade.exitIndex];
+    // Mark swap points — split by direction so colors carry meaning.
+    const sellEtfPoints = new Array(data.length).fill(null);  // premium > 0 (高估)
+    const buyEtfPoints  = new Array(data.length).fill(null);  // premium < 0 (折价)
+    for (const t of trades) {
+        const idx = t.swapIndex !== undefined ? t.swapIndex : t.entryIndex;
+        if (idx == null || idx >= data.length) continue;
+        if (t.direction === 'sell_etf_buy_stock') sellEtfPoints[idx] = premiums[idx];
+        else                                       buyEtfPoints[idx]  = premiums[idx];
     }
 
     premiumChart = new Chart(ctx, {
@@ -134,20 +137,20 @@ function renderPremiumChart(data, trades) {
                     fill: false,
                 },
                 {
-                    label: '开仓点',
-                    data: entryPoints,
+                    label: '卖ETF换仓',
+                    data: sellEtfPoints,
                     borderColor: 'transparent',
-                    backgroundColor: '#16a34a',
-                    pointRadius: 6,
+                    backgroundColor: '#dc2626',
+                    pointRadius: 7,
                     pointStyle: 'triangle',
                     showLine: false,
                 },
                 {
-                    label: '平仓点',
-                    data: exitPoints,
+                    label: '买ETF换仓',
+                    data: buyEtfPoints,
                     borderColor: 'transparent',
-                    backgroundColor: '#dc2626',
-                    pointRadius: 6,
+                    backgroundColor: '#2563eb',
+                    pointRadius: 7,
                     pointStyle: 'rectRot',
                     showLine: false,
                 },

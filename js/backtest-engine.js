@@ -24,25 +24,48 @@ function groupByDate(data) {
 const CUTOFF = '14:30';
 
 /**
- * Run backtest with the rebalance model, day by day.
- * Positions never carry across days: if still open at the last row of a day,
- * exit there with reason 'end_of_day'. The very last row of the whole dataset
- * uses 'end_of_data' to preserve previous semantics.
+ * Run the **position-swap arbitrage** backtest (底仓换仓套利).
  *
- * Each trade carries a `date` field so downstream code can group trades by day.
+ * Strategy model:
+ *   - The trader is assumed to hold a large Hynix base position permanently
+ *     (delta neutrality maintained across the swap).
+ *   - When |premium| >= threshold, the trader **immediately swaps** a slice
+ *     of the position:
+ *       * Premium > 0 (ETF overvalued)  → 卖 ETF / 买 Hynix
+ *       * Premium < 0 (ETF undervalued) → 买 ETF / 卖 Hynix（卖出部分底仓）
+ *   - The swap **instantly locks in** `|premium| - swapCost` percent of profit.
+ *     There is no exit / reversion / stop-loss concept: the post-swap delta
+ *     stays neutral, so further price moves do not affect realized P&L.
+ *
+ * Hysteresis (滞回) to avoid over-trading:
+ *   - Each direction (up / down) is independently "armed".
+ *   - After a swap fires on direction D, D is disarmed until the premium
+ *     comes back within `threshold * 0.5` of zero on that side.
+ *   - This means: a slowly widening one-sided drift fires once, not 87 times.
+ *
+ * Day boundary:
+ *   - The two arm flags reset at the start of each new day.
  *
  * @param {Array} data
- * @param {Object} params - { threshold, txCost, tradeAmount }
- * @returns {Array}
+ * @param {Object} params - { threshold, swapCost, tradeAmount }
+ *     swapCost: total cost per swap in % (covers both legs: sell one, buy the
+ *               other). The legacy `txCost` field is still accepted for
+ *               backward compatibility and is treated as swapCost.
+ * @returns {Array<Object>} swaps
  */
 export function runBacktest(data, params) {
-    const { threshold, txCost, tradeAmount } = params;
-    const trades = [];
+    const { threshold, tradeAmount } = params;
+    const swapCost = params.swapCost != null ? params.swapCost : (params.txCost || 0);
+
+    const swaps = [];
     const groups = groupByDate(data);
-    const totalLastIndex = data.length - 1;
+
+    const halfBand = threshold * 0.5;
 
     for (const { date, rows, startIndex } of groups) {
-        let position = null;
+        // Independent arm flags so opposite-side swaps don't block each other.
+        let armedUp = true;     // ready to fire on premium >= +threshold
+        let armedDown = true;   // ready to fire on premium <= -threshold
 
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
@@ -50,64 +73,38 @@ export function runBacktest(data, params) {
             const premium = row.premiumDiscount;
             if (premium === null || premium === undefined) continue;
 
-            if (position === null) {
-                if (Math.abs(premium) >= threshold) {
-                    position = {
-                        date,
-                        direction: premium > 0 ? 'sell_etf_buy_stock' : 'buy_etf_sell_stock',
-                        entryIndex: globalIndex,
-                        entryTime: row.time,
-                        entryPremium: premium,
-                    };
-                }
-                continue;
-            }
+            // Re-arm whichever side has come back within the inner band.
+            if (premium <  halfBand) armedUp = true;
+            if (premium > -halfBand) armedDown = true;
 
-            const entryAbs = Math.abs(position.entryPremium);
-            const currentAbs = Math.abs(premium);
-            const crossedZero = (position.entryPremium > 0 && premium <= 0) ||
-                                (position.entryPremium < 0 && premium >= 0);
-            const isLastRowOfDay = i === rows.length - 1;
-            const isLastRowOverall = globalIndex === totalLastIndex;
+            // Fire on the side that is both armed AND beyond threshold.
+            const fireUp   = armedUp   && premium >=  threshold;
+            const fireDown = armedDown && premium <= -threshold;
+            if (!fireUp && !fireDown) continue;
 
-            if (currentAbs < entryAbs * 0.5 || crossedZero || isLastRowOfDay) {
-                const rawProfit = entryAbs - currentAbs;
-                const netProfit = rawProfit - (txCost * 2);
-                const profitHKD = netProfit * (tradeAmount / 100);
+            const direction = fireUp ? 'sell_etf_buy_stock' : 'buy_etf_sell_stock';
+            const rawProfit = Math.abs(premium);        // locked-in gross %
+            const netProfit = rawProfit - swapCost;     // after the round-trip swap cost
+            const profitHKD = netProfit * (tradeAmount / 100);
 
-                let exitReason;
-                if (crossedZero) exitReason = 'cross_zero';
-                else if (currentAbs < entryAbs * 0.5) exitReason = 'reversion';
-                else if (isLastRowOverall) exitReason = 'end_of_data';
-                else exitReason = 'end_of_day';
+            swaps.push({
+                date,
+                direction,
+                swapIndex: globalIndex,
+                swapTime: row.time,
+                premium,
+                rawProfit,
+                netProfit,
+                profitHKD,
+                swapCost,
+            });
 
-                trades.push({
-                    ...position,
-                    exitIndex: globalIndex,
-                    exitTime: row.time,
-                    exitPremium: premium,
-                    rawProfit,
-                    netProfit,
-                    profitHKD,
-                    exitReason,
-                });
-                position = null;
-
-                // Mid-day reversal: open opposite side immediately if still beyond threshold.
-                if (!isLastRowOfDay && Math.abs(premium) >= threshold) {
-                    position = {
-                        date,
-                        direction: premium > 0 ? 'sell_etf_buy_stock' : 'buy_etf_sell_stock',
-                        entryIndex: globalIndex,
-                        entryTime: row.time,
-                        entryPremium: premium,
-                    };
-                }
-            }
+            if (fireUp)   armedUp   = false;
+            if (fireDown) armedDown = false;
         }
     }
 
-    return trades;
+    return swaps;
 }
 
 /**

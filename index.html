@@ -82,24 +82,26 @@
 
         <!-- Strategy Parameters + Run Button -->
         <section id="strategy-params" class="block">
-            <h2>策略参数</h2>
+            <h2>策略参数 <span class="section-tag tag-history">底仓换仓套利</span></h2>
+            <p class="section-subtitle">假设长期持有 Hynix 底仓。当偏离超阈值时，把一部分底仓在 ETF/Hynix 之间换边，立即锁定价差。Delta 保持中性，无平仓概念。</p>
             <div class="params-grid">
                 <div class="param-item">
                     <label for="threshold">背离阈值 (%)</label>
                     <input type="number" id="threshold" value="1.5" step="0.1" min="0">
-                    <span class="hint">溢价/折价率超过此值时触发调仓，越大越保守</span>
+                    <span class="hint">|偏离| ≥ 此值时触发一次换仓；越大越保守</span>
                 </div>
                 <div class="param-item">
-                    <label for="tx-cost">交易费率 (%)</label>
-                    <input type="number" id="tx-cost" value="0.2" step="0.01" min="0">
-                    <span class="hint">单边佣金+印花税（不含基金内部费用，iNAV已包含）</span>
+                    <label for="swap-cost">单笔换仓总成本 (%)</label>
+                    <input type="number" id="swap-cost" value="0.4" step="0.01" min="0">
+                    <span class="hint">一次换仓 = 卖一边 + 买另一边，两笔成交的合计费率</span>
                 </div>
                 <div class="param-item">
-                    <label for="trade-amount">交易金额 (HKD)</label>
+                    <label for="trade-amount">单笔换仓金额 (HKD)</label>
                     <input type="number" id="trade-amount" value="100000" step="10000" min="0">
-                    <span class="hint">每次调仓投入的资金量</span>
+                    <span class="hint">每次换仓涉及的 ETF 名义金额（对应底仓 Hynix 卖出 2× 等值）</span>
                 </div>
             </div>
+            <p class="section-subtitle" style="margin-top:0.75rem; font-size:0.78rem; color:var(--color-text-muted);">滞回机制：同一方向触发一次后，需偏离回到 阈值×50% 以内才允许再次触发，避免缓慢漂移期间重复换仓。</p>
             <div class="run-section">
                 <button id="run-backtest-btn" class="btn btn-primary btn-large">运行回测</button>
             </div>

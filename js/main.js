@@ -8,7 +8,7 @@ import { generateConclusion } from './conclusion.js';
 
 function getParams() {
     return {
-        threshold: parseFloat(document.getElementById('threshold').value) || 1.5,
+        threshold: parseFloat(document.getElementById('threshold').value) || 2.0,
         swapCost: parseFloat(document.getElementById('swap-cost').value) || 0.4,
         tradeAmount: parseFloat(document.getElementById('trade-amount').value) || 100000,
     };

@@ -112,6 +112,81 @@ function init() {
         updateBacktestShadowColumn();
         refreshDashboard();
     }, 50);
+
+    // Lazy-load the changelog from /api/changelog (auto-built from git log).
+    loadChangelog();
+}
+
+/**
+ * Pull recent commits from the backend and render them into the
+ * #changelog-list panel. Failures are silent (just shows a fallback note).
+ *
+ * Commit subjects follow Conventional Commit-ish style, e.g.:
+ *   "feat(strategy): rewrite backtest as position-swap arbitrage (底仓换仓套利)"
+ * We strip the leading "type(scope):" prefix when present, since end users
+ * don't care about the technical type.
+ */
+async function loadChangelog() {
+    const list = document.getElementById('changelog-list');
+    const summary = document.getElementById('changelog-summary');
+    if (!list) return;
+
+    try {
+        const resp = await fetch('/api/changelog?limit=15', { cache: 'no-store' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const { entries, total } = await resp.json();
+
+        if (!entries || entries.length === 0) {
+            list.innerHTML = '<p class="note" style="margin:1rem 0;">暂无提交记录。</p>';
+            return;
+        }
+
+        if (summary) {
+            const latest = entries[0].date;
+            summary.textContent = `共 ${total} 次更新 · 最新 ${latest}`;
+        }
+
+        // Group entries by date for a compact timeline-style render
+        const byDate = new Map();
+        for (const e of entries) {
+            const subj = humanizeSubject(e.subject);
+            if (!byDate.has(e.date)) byDate.set(e.date, []);
+            byDate.get(e.date).push({ ...e, subject: subj });
+        }
+
+        const html = [...byDate.entries()].map(([date, items]) => `
+            <div class="changelog-day">
+                <div class="changelog-date">${date}</div>
+                <ul class="changelog-items">
+                    ${items.map(it => `
+                        <li>
+                            <span class="changelog-text">${escapeHtml(it.subject)}</span>
+                            <code class="changelog-hash">${it.hash}</code>
+                        </li>
+                    `).join('')}
+                </ul>
+            </div>
+        `).join('');
+
+        list.innerHTML = html;
+    } catch (err) {
+        list.innerHTML = `<p class="note" style="margin:1rem 0;color:#94a3b8;">无法获取更新日志（${escapeHtml(err.message)}）</p>`;
+    }
+}
+
+/**
+ * Strip Conventional-Commit prefix like "feat(scope): ..." down to the
+ * human-friendly part. Keeps the subject as-is if no prefix matches.
+ */
+function humanizeSubject(s) {
+    if (!s) return '';
+    return s.replace(/^(feat|fix|tweak|refactor|chore|docs|style|perf|test|build|ci)(\([^)]*\))?:\s*/i, '');
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
 }
 
 function executeBacktest() {

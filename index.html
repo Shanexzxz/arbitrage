@@ -18,6 +18,7 @@
             <a href="#price-monitor">API盯盘</a>
             <a href="#indicator-guide">指标说明</a>
             <a href="#bbg-guide">BBG指南</a>
+            <a href="#changelog">更新日志</a>
         </div>
     </nav>
 
@@ -257,6 +258,22 @@
                             </tbody>
                         </table>
                         <p class="note" style="margin-top:0.75rem;">注意：影子 iNAV 为近似值，未纳入管理费（每日约0.01%）、杠杆融资成本、每日再平衡损耗、底层合约展期成本。建议同时导入官方 iNAV + 海力士/汇率数据，系统会自动对比两者差异。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Changelog (collapsible, default closed) -->
+        <section id="changelog" class="block">
+            <button class="collapse-toggle" aria-expanded="false" aria-controls="changelog-content">
+                <span class="collapse-icon"></span>
+                <span class="collapse-title">更新日志 <span class="section-tag tag-history" id="changelog-summary">加载中…</span></span>
+                <span class="collapse-hint">查看最近的迭代记录（自动从 git log 读取）</span>
+            </button>
+            <div id="changelog-content" class="collapsible">
+                <div class="collapsible-inner">
+                    <div id="changelog-list" class="changelog-list">
+                        <p class="note" style="margin:1rem 0;">正在加载最近的提交记录…</p>
                     </div>
                 </div>
             </div>

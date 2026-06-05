@@ -584,9 +584,28 @@ function readRows() {
 
 /**
  * Resolve a single day's rows into engine-ready records.
+ *
+ * iNAV resolution strategy ("relay" model):
+ *   - Before 14:30  → use the official iNAV directly (truth).
+ *   - After  14:30  → official BBG iNAV freezes (Hynix main board closed),
+ *                     so we *relay* from the 14:30 truth value:
+ *                         shadow_iNAV(t) = iNAV_14:30
+ *                                        × (1 + ΔKT_since_14:30 × 2
+ *                                           + ΔFX_since_14:30)
+ *                     This preserves the fund's intrinsic costs
+ *                     (management fee, leverage decay, roll cost) that
+ *                     official iNAV already encodes, instead of re-synthesizing
+ *                     the whole day from a flat 09:30 baseline.
+ *
+ * For diagnostics (validation chart), we still compute a "synthetic"
+ * shadow_iNAV_change against the 09:30 baseline, so users can compare it
+ * to the official iNAV throughout the morning session.
+ *
  * Each output row carries:
- *   - inavSource: 'truth' | 'shadow' (for downstream UI badges)
- *   - The original prices kept for diagnostics.
+ *   - inavChange:        the value used by the backtest
+ *   - inavSource:        'truth' | 'shadow' (for UI badges)
+ *   - shadowInavChange:  diagnostic-only synthetic (09:30 baseline)
+ *   - officialInavChange: diagnostic-only official (09:30 baseline)
  */
 const INAV_CUTOFF = '14:30';
 
@@ -601,6 +620,19 @@ function resolveDay(date, rows) {
     const baseFx = base.fxRate;
     if (!baseEtf) return []; // ETF base is mandatory
 
+    // Find the 14:30 relay anchor: the first row at-or-after 14:30 that has
+    // both an official iNAV and a KT price + FX rate. After cutoff we feed
+    // KT increments through this anchor instead of re-deriving from 09:30.
+    let anchor = null;  // { inav, kt, fx }
+    for (const row of rows) {
+        if (!row.time || row.time < INAV_CUTOFF) continue;
+        const kt = row.hynixKT;
+        if (row.inavPrice != null && kt != null && row.fxRate != null) {
+            anchor = { inav: row.inavPrice, kt, fx: row.fxRate };
+            break;
+        }
+    }
+
     const out = [];
     for (const row of rows) {
         if (row.etfPrice === null || row.etfPrice === undefined) continue;
@@ -608,43 +640,48 @@ function resolveDay(date, rows) {
         const etfChange = ((row.etfPrice - baseEtf) / baseEtf) * 100;
         const isAfterCutoff = row.time && row.time > INAV_CUTOFF;
 
-        // Determine which Hynix price to use for shadow calc
-        // After 14:30: must use KT (main board closed)
-        // Before 14:30: prefer KP, fallback KT
-        const hynixPrice = isAfterCutoff
+        // ---- Diagnostic series (always vs 09:30 baseline) ----
+        // Synthetic shadow uses KP before cutoff, KT after — same convention
+        // as before, kept purely for the validation chart that compares
+        // synthetic vs official across the morning.
+        const diagHynix = isAfterCutoff
             ? (row.hynixKT || null)
             : (row.hynixKP || row.hynixKT || null);
-
-        // Compute shadow iNAV change (always, for validation chart)
         let shadowInavChange = null;
-        if (hynixPrice && baseHynix && baseFx && row.fxRate) {
-            const hynixChange = ((hynixPrice - baseHynix) / baseHynix) * 100;
+        if (diagHynix && baseHynix && baseFx && row.fxRate) {
+            const hynixChange = ((diagHynix - baseHynix) / baseHynix) * 100;
             const fxChange = ((row.fxRate - baseFx) / baseFx) * 100;
             shadowInavChange = hynixChange * 2 + fxChange;
         }
 
-        // Compute official iNAV change (always, for validation chart)
         let officialInavChange = null;
         if (row.inavPrice !== null && row.inavPrice !== undefined && baseInav) {
             officialInavChange = ((row.inavPrice - baseInav) / baseInav) * 100;
         }
 
-        // Decide which iNAV to use for the actual premium/discount calculation
+        // ---- Decide the iNAV used by the backtest engine ----
         let inavChange = null;
         let inavSource = null;
 
         if (!isAfterCutoff && officialInavChange !== null) {
-            // Before 14:30: trust official iNAV
+            // Truth phase: pure official iNAV
+            inavChange = officialInavChange;
+            inavSource = 'truth';
+        } else if (isAfterCutoff && anchor && row.hynixKT != null && row.fxRate != null && baseInav) {
+            // Relay phase: anchor at 14:30 truth, extend with KT + FX increments
+            const ktChange = (row.hynixKT - anchor.kt) / anchor.kt;     // fraction
+            const fxChange = (row.fxRate  - anchor.fx) / anchor.fx;     // fraction
+            const relayedInav = anchor.inav * (1 + ktChange * 2 + fxChange);
+            inavChange = (relayedInav - baseInav) / baseInav * 100;
+            inavSource = 'shadow';
+        } else if (officialInavChange !== null) {
+            // Fallback: stale official iNAV (no anchor / no KT update)
             inavChange = officialInavChange;
             inavSource = 'truth';
         } else if (shadowInavChange !== null) {
-            // After 14:30 (or no official iNAV): use shadow
+            // Last-resort fallback: pure synthetic vs 09:30 (legacy behavior)
             inavChange = shadowInavChange;
             inavSource = 'shadow';
-        } else if (officialInavChange !== null) {
-            // Fallback: use official even after cutoff if no shadow available
-            inavChange = officialInavChange;
-            inavSource = 'truth';
         } else {
             continue;
         }
@@ -724,10 +761,15 @@ export function validateData(data, _mode) {
 }
 
 /**
- * Recalculate shadow iNAV for all rows in the backtest data table.
- * Groups by date; each day's first row provides the baseline iNAV, Hynix, FX.
- * Shadow = baseInav * (1 + hynixChange*2) * (1 + fxChange).
- * Only fills when Hynix + FX are available for that row.
+ * Recalculate the "影子 iNAV" column shown in the backtest table.
+ *
+ * Two phases — same model as resolveDay():
+ *   - Before 14:30: synthetic = baseInav_09:30 × (1 + hxChange×2 + fxChange)
+ *     (purely diagnostic — lets users compare to official iNAV in the morning).
+ *   - After  14:30: relayed = inav_14:30 × (1 + ΔKT_since_14:30 × 2 + ΔFX)
+ *     (this is what the backtest actually uses).
+ *
+ * Either form requires Hynix + FX of the row, plus the relevant baseline.
  */
 export function updateBacktestShadowColumn() {
     const tbody = document.getElementById('data-tbody');
@@ -758,9 +800,23 @@ export function updateBacktestShadowColumn() {
         if (dayRows.length === 0) continue;
         const firstInputs = dayRows[0].inputs;
         const baseInav = parseFloat(firstInputs[inavIdx]?.value) || null;
-        // Hynix baseline: prefer KP (main board opening)
         const baseHynix = parseFloat(firstInputs[kpIdx]?.value) || parseFloat(firstInputs[ktIdx]?.value) || null;
         const baseFx = parseFloat(firstInputs[fxIdx]?.value) || null;
+
+        // Find the 14:30 relay anchor for the afternoon (first row at-or-after
+        // 14:30 with both an inav and KT + FX values).
+        let anchor = null;
+        for (const { inputs } of dayRows) {
+            const tm = inputs[timeIdx]?.value.trim() || '';
+            if (tm < '14:30') continue;
+            const inav = parseFloat(inputs[inavIdx]?.value);
+            const kt   = parseFloat(inputs[ktIdx]?.value);
+            const fx   = parseFloat(inputs[fxIdx]?.value);
+            if (!isNaN(inav) && !isNaN(kt) && !isNaN(fx)) {
+                anchor = { inav, kt, fx };
+                break;
+            }
+        }
 
         for (const { inputs } of dayRows) {
             const shadowInput = inputs[shadowIdx];
@@ -768,21 +824,30 @@ export function updateBacktestShadowColumn() {
 
             const time = inputs[timeIdx]?.value.trim() || '';
             const isAfterCutoff = time > '14:30';
-
-            // After 14:30 use KT, before use KP (fallback KT)
-            const hynix = isAfterCutoff
-                ? (parseFloat(inputs[ktIdx]?.value) || null)
-                : (parseFloat(inputs[kpIdx]?.value) || parseFloat(inputs[ktIdx]?.value) || null);
             const fx = parseFloat(inputs[fxIdx]?.value) || null;
 
-            if (baseInav && baseHynix && baseFx && hynix && fx) {
-                const hynixChange = (hynix - baseHynix) / baseHynix;
-                const fxChange = (fx - baseFx) / baseFx;
-                const shadow = baseInav * (1 + hynixChange * 2) * (1 + fxChange);
-                shadowInput.value = shadow.toFixed(4);
+            let shadow = null;
+            if (isAfterCutoff && anchor) {
+                // Relay phase
+                const kt = parseFloat(inputs[ktIdx]?.value) || null;
+                if (kt && fx) {
+                    const ktChange = (kt - anchor.kt) / anchor.kt;
+                    const fxChange = (fx - anchor.fx) / anchor.fx;
+                    shadow = anchor.inav * (1 + ktChange * 2 + fxChange);
+                }
             } else {
-                shadowInput.value = '';
+                // Synthetic (morning diagnostic, vs 09:30 baseline)
+                const hynix = parseFloat(inputs[kpIdx]?.value)
+                           || parseFloat(inputs[ktIdx]?.value)
+                           || null;
+                if (baseInav && baseHynix && baseFx && hynix && fx) {
+                    const hynixChange = (hynix - baseHynix) / baseHynix;
+                    const fxChange = (fx - baseFx) / baseFx;
+                    shadow = baseInav * (1 + hynixChange * 2) * (1 + fxChange);
+                }
             }
+
+            shadowInput.value = shadow != null ? shadow.toFixed(4) : '';
         }
     }
 }

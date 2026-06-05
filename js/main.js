@@ -262,8 +262,8 @@ function renderStatsPanel(stats) {
         { label: '平均单次收益', value: `${stats.avgProfit.toFixed(0)} HKD`, hint: '总收益 / 换仓次数' },
         { label: '卖ETF换仓', value: `${stats.upSwaps} 次`, hint: 'ETF 高估时把 ETF 换回 Hynix 底仓' },
         { label: '买ETF换仓', value: `${stats.downSwaps} 次`, hint: 'ETF 折价时把 Hynix 底仓换成 ETF' },
-        { label: '14:30前信号', value: `${stats.beforeCount} 次`, hint: '主板（KP）连续竞价时段超阈值的次数（统计口径，不等于换仓）' },
-        { label: '14:30后信号', value: `${stats.afterCount} 次`, hint: '主板收盘后（仅 Next Trade 在盘）超阈值的次数' },
+        { label: '14:20前信号', value: `${stats.beforeCount} 次`, hint: '主板（KP）连续竞价时段超阈值的次数（统计口径，不等于换仓）' },
+        { label: '14:20后信号', value: `${stats.afterCount} 次`, hint: '主板收盘后（仅 Next Trade 在盘）超阈值的次数' },
     ];
 
     panel.innerHTML = items.map(item => `
@@ -549,7 +549,7 @@ function getBacktestExportColumns() {
     return [
         { label: '日期',           placeholder: 'YYYY-MM-DD' },
         { label: '时间',           placeholder: 'HH:MM' },
-        { label: 'iNAV(HKD)',      placeholder: '14:30前' },
+        { label: 'iNAV(HKD)',      placeholder: '14:20前' },
         { label: '海力士股价(KRW)', placeholder: '201000' },
         { label: 'KRW/HKD汇率',    placeholder: '0.00600' },
         { label: 'ETF市价(HKD)',   placeholder: '10.15' },
@@ -713,7 +713,7 @@ function importBacktestFile(file) {
  * for ticker keywords:
  *   7709IV          -> iNAV (15-second grid)
  *   7709 HK Equity  -> ETF tick
- *   000660 KP       -> Hynix KOSPI tick (main board, 09:00-14:30 KST)
+ *   000660 KP       -> Hynix KOSPI tick (main board: 连续 09:00-14:20 + 收盘集合 14:20-14:30 KST)
  *   000660 KT       -> Hynix Next Trade tick (08:00-20:00 KST)
  *   KRW Curncy      -> KRW/HKD FX tick
  *
@@ -764,11 +764,11 @@ function parseBBGBacktestData(rows) {
     const ffKt  = ffCursor(ktTicks);
     const ffFx  = ffCursor(fxTicks);
 
-    // KP (KOSPI main board) closes after 14:30 — beyond that we deliberately
+    // KP (KOSPI main board) closes after 14:20 — beyond that we deliberately
     // leave the cell blank instead of LOCF-filling, so the table makes it
     // visually clear that no further main-board trades happened. The backtest
     // engine handles missing KP by falling back to KT (Next Trade).
-    const KP_CUTOFF = '14:30';
+    const KP_CUTOFF = '14:20';
 
     // 1) Build aligned 15s-grid rows from iNAV
     const aligned = inavTicks.map(t => {
@@ -1650,7 +1650,7 @@ function renderDivergenceChart(data, threshold) {
                     ctx.stroke();
                 }
 
-                // Per-day cutoff (14:30) lines
+                // Per-day cutoff (14:20) lines
                 ctx.setLineDash([4, 4]);
                 ctx.strokeStyle = '#ca8a04';
                 ctx.lineWidth = 1.5;
@@ -1680,8 +1680,8 @@ function renderDivergenceChart(data, threshold) {
                     ctx.font = '11px sans-serif';
                     const xPos = xScale.getPixelForValue(cutoffIndices[0]);
                     const labelText = cutoffIndices.length > 1
-                        ? `14:30 主板收盘 (×${cutoffIndices.length})`
-                        : '14:30 主板收盘';
+                        ? `14:20 集合竞价 (×${cutoffIndices.length})`
+                        : '14:20 集合竞价';
                     ctx.fillText(labelText, xPos + 4, chartArea.top + 14);
                 }
 
@@ -1695,7 +1695,7 @@ let inavComparisonChart = null;
 
 /**
  * Render chart showing official iNAV and shadow iNAV actual HKD values over the full day.
- * Visually demonstrates that official iNAV freezes after 14:30 while shadow (KT-based) continues.
+ * Visually demonstrates that official iNAV freezes after 14:20 while shadow (KT-based) continues.
  */
 function renderInavComparisonChart(data) {
     const canvas = document.getElementById('inav-comparison-chart');
@@ -1727,8 +1727,8 @@ function renderInavComparisonChart(data) {
     const officialLine = validRows.map(r => r.inavPrice);
     const shadowLine = validRows.map(r => baseInav * (1 + r.shadowInavChange / 100));
 
-    // Find 14:30 cutoff
-    const cutoffIdx = validRows.findIndex(r => r.time && r.time > '14:30');
+    // Find 14:20 cutoff
+    const cutoffIdx = validRows.findIndex(r => r.time && r.time > '14:20');
 
     inavComparisonChart = new Chart(ctx, {
         type: 'line',
@@ -1791,7 +1791,7 @@ function renderInavComparisonChart(data) {
                 ctx.stroke();
                 ctx.fillStyle = '#ca8a04';
                 ctx.font = '11px sans-serif';
-                ctx.fillText('14:30', xPos + 4, chartArea.top + 14);
+                ctx.fillText('14:20', xPos + 4, chartArea.top + 14);
                 ctx.restore();
             }
         }],
@@ -1802,7 +1802,7 @@ let inavValidationChart = null;
 
 /**
  * Render chart comparing official iNAV vs shadow iNAV deviation over time.
- * Shows how the official iNAV diverges from reality (KT-based shadow) after 14:30.
+ * Shows how the official iNAV diverges from reality (KT-based shadow) after 14:20.
  */
 function renderInavValidationChart(data) {
     const canvas = document.getElementById('inav-validation-chart');
@@ -1823,8 +1823,8 @@ function renderInavValidationChart(data) {
     const labels = validRows.map(r => r.time || '');
     const deviations = validRows.map(r => r.shadowInavChange - r.officialInavChange);
 
-    // Find 14:30 cutoff index for vertical line
-    const cutoffIdx = validRows.findIndex(r => r.time && r.time > '14:30');
+    // Find 14:20 cutoff index for vertical line
+    const cutoffIdx = validRows.findIndex(r => r.time && r.time > '14:20');
 
     inavValidationChart = new Chart(ctx, {
         type: 'line',
@@ -1887,7 +1887,7 @@ function renderInavValidationChart(data) {
                 ctx.stroke();
                 ctx.fillStyle = '#ca8a04';
                 ctx.font = '11px sans-serif';
-                ctx.fillText('14:30 主板收盘', xPos + 4, chartArea.top + 14);
+                ctx.fillText('14:20 集合竞价', xPos + 4, chartArea.top + 14);
                 ctx.restore();
             }
         }],

@@ -1,7 +1,8 @@
 // js/data-input.js
 
 // Unified column schema for the backtest table.
-// 14:30前用官方iNAV，14:30后用KT股价计算影子iNAV替代。
+// 14:20前用官方iNAV，14:20后用KT股价计算影子iNAV替代（主板进入收盘集合竞价后
+// 官方 iNAV 不再可靠）。
 // KP = 000660 KP Equity (主板连续竞价 09:00-14:20 + 14:30 收盘集合竞价)
 // KT = 000660 KT Equity (Next Trade 盘后延伸至 16:30)
 const COLUMNS = [
@@ -310,16 +311,16 @@ const DEMO_DATA = [
     { date: '2026-05-21', time: '14:18', inavPrice: '97.1267', hynixKP: '1942000', hynixKT: '1941000', fxRate: '0.005175', etfPrice: '97.20' },
     { date: '2026-05-21', time: '14:19', inavPrice: '97.2179', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005175', etfPrice: '97.16' },
     { date: '2026-05-21', time: '14:20', inavPrice: '97.3121', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005175', etfPrice: '96.94' },
-    { date: '2026-05-21', time: '14:21', inavPrice: '96.5780', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005176', etfPrice: '96.46' },
-    { date: '2026-05-21', time: '14:22', inavPrice: '96.6842', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '96.58' },
-    { date: '2026-05-21', time: '14:23', inavPrice: '96.4965', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '96.42' },
-    { date: '2026-05-21', time: '14:24', inavPrice: '96.4113', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '96.48' },
-    { date: '2026-05-21', time: '14:25', inavPrice: '95.4980', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '95.74' },
-    { date: '2026-05-21', time: '14:26', inavPrice: '96.1329', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '95.98' },
-    { date: '2026-05-21', time: '14:27', inavPrice: '96.4970', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '96.32' },
-    { date: '2026-05-21', time: '14:28', inavPrice: '96.5026', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '96.44' },
-    { date: '2026-05-21', time: '14:29', inavPrice: '96.5060', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005181', etfPrice: '96.52' },
-    { date: '2026-05-21', time: '14:30', inavPrice: '96.6956', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '96.84' },
+    { date: '2026-05-21', time: '14:21', inavPrice: '96.5780', hynixKP: '', hynixKT: '1941000', fxRate: '0.005176', etfPrice: '96.46' },
+    { date: '2026-05-21', time: '14:22', inavPrice: '96.6842', hynixKP: '', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '96.58' },
+    { date: '2026-05-21', time: '14:23', inavPrice: '96.4965', hynixKP: '', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '96.42' },
+    { date: '2026-05-21', time: '14:24', inavPrice: '96.4113', hynixKP: '', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '96.48' },
+    { date: '2026-05-21', time: '14:25', inavPrice: '95.4980', hynixKP: '', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '95.74' },
+    { date: '2026-05-21', time: '14:26', inavPrice: '96.1329', hynixKP: '', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '95.98' },
+    { date: '2026-05-21', time: '14:27', inavPrice: '96.4970', hynixKP: '', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '96.32' },
+    { date: '2026-05-21', time: '14:28', inavPrice: '96.5026', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '96.44' },
+    { date: '2026-05-21', time: '14:29', inavPrice: '96.5060', hynixKP: '', hynixKT: '1941000', fxRate: '0.005181', etfPrice: '96.52' },
+    { date: '2026-05-21', time: '14:30', inavPrice: '96.6956', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '96.84' },
     { date: '2026-05-21', time: '14:31', inavPrice: '97.1443', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '97.00' },
     { date: '2026-05-21', time: '14:32', inavPrice: '96.9616', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '96.84' },
     { date: '2026-05-21', time: '14:33', inavPrice: '97.0580', hynixKP: '', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '96.80' },
@@ -460,8 +461,8 @@ export function renderBaseline(container) {
             <div class="baseline-notice-row"><strong>基准价格</strong>：自动取每个交易日<strong>第一行</strong>（通常为 09:30 开盘值），无需手动填写。</div>
             <div class="baseline-notice-row"><strong>iNAV 来源</strong>：每行<strong>独立判断</strong>。</div>
             <ul class="baseline-notice-list">
-                <li><span class="tag-truth">真 iNAV</span> 该行 <code>iNAV(HKD)</code> 列有值时直接使用，最准。建议从 BBG <code>7709IV HK Equity</code> 导出 09:30–14:30 的分钟数据。</li>
-                <li><span class="tag-shadow">影子 iNAV</span> 该行 <code>iNAV(HKD)</code> 留空、但 <code>海力士股价</code> 与 <code>汇率</code> 都有值时，系统按 <code>海力士涨跌% × 2 + 汇率涨跌%</code> 自动合成（用于覆盖 14:30 之后 BBG 停更的窗口）。</li>
+                <li><span class="tag-truth">真 iNAV</span> 该行 <code>iNAV(HKD)</code> 列有值时直接使用，最准。建议从 BBG <code>7709IV HK Equity</code> 导出 09:30–14:20 的分钟数据。</li>
+                <li><span class="tag-shadow">影子 iNAV</span> 该行 <code>iNAV(HKD)</code> 留空、但 <code>海力士股价</code> 与 <code>汇率</code> 都有值时，系统按 <code>海力士涨跌% × 2 + 汇率涨跌%</code> 自动合成（用于覆盖 14:20 之后 BBG 停更的窗口）。</li>
                 <li><span class="tag-skip">跳过</span> 三者都不全的行不参与回测。</li>
             </ul>
         </div>
@@ -491,21 +492,20 @@ function generateRowsWithData(dataRows) {
 
 /**
  * Public re-export so main.js's BBG/CSV importers can render rows with the
- * same logic (including the "主板已收盘" placeholder for KP after 14:30).
+ * same logic (including the "主板已收盘" placeholder for KP after 14:20).
  */
 export function renderRowHTML(rowData) {
     return generateRowWithData(rowData);
 }
 
 function generateRowWithData(rowData) {
-    // After 14:30 the KOSPI main board is closed → render hynixKP as a
-    // disabled placeholder cell ("主板已收盘") so it is visually obvious that
-    // no further main-board prints exist. The cell is still an <input> (so
-    // querySelectorAll('input') indexing in readRows() stays in sync), just
-    // type=text + readonly + a marker class. parseFloat of the placeholder
-    // gives NaN → treated as null downstream.
+    // After 14:20 the KOSPI main board is closed (集合竞价开始) → render
+    // hynixKP as a disabled placeholder cell, AND the shadow iNAV column
+    // becomes the engine's actual decision input (relay-mode).
+    // Before 14:20 the shadow column is purely a synthetic vs official-iNAV
+    // diagnostic, so we render it with a softer style ("shadow-cell-pre").
     const time = rowData?.time || '';
-    const isMainBoardClosed = time && time > '14:30';
+    const isMainBoardClosed = time && time > '14:20';
 
     const cells = COLUMNS.map(c => {
         const value = rowData && rowData[c.key] !== undefined ? rowData[c.key] : '';
@@ -515,7 +515,14 @@ function generateRowWithData(rowData) {
         }
 
         const readonlyAttr = c.readonly ? 'readonly tabindex="-1"' : '';
-        const cls = c.readonly ? ' class="shadow-cell"' : '';
+        let cls = '';
+        if (c.key === 'shadowInav') {
+            cls = isMainBoardClosed
+                ? ' class="shadow-cell"'           // active value used by engine
+                : ' class="shadow-cell shadow-cell-pre"';  // diagnostic only
+        } else if (c.readonly) {
+            cls = ' class="shadow-cell"';
+        }
         return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${value}" ${readonlyAttr}${cls}></td>`;
     }).join('');
     return `<tr>${cells}</tr>`;
@@ -586,12 +593,12 @@ function readRows() {
  * Resolve a single day's rows into engine-ready records.
  *
  * iNAV resolution strategy ("relay" model):
- *   - Before 14:30  → use the official iNAV directly (truth).
- *   - After  14:30  → official BBG iNAV freezes (Hynix main board closed),
- *                     so we *relay* from the 14:30 truth value:
- *                         shadow_iNAV(t) = iNAV_14:30
- *                                        × (1 + ΔKT_since_14:30 × 2
- *                                           + ΔFX_since_14:30)
+ *   - Before 14:20  → use the official iNAV directly (truth).
+ *   - After  14:20  → official BBG iNAV freezes (Hynix main board closed),
+ *                     so we *relay* from the 14:20 truth value:
+ *                         shadow_iNAV(t) = iNAV_14:20
+ *                                        × (1 + ΔKT_since_14:20 × 2
+ *                                           + ΔFX_since_14:20)
  *                     This preserves the fund's intrinsic costs
  *                     (management fee, leverage decay, roll cost) that
  *                     official iNAV already encodes, instead of re-synthesizing
@@ -607,7 +614,7 @@ function readRows() {
  *   - shadowInavChange:  diagnostic-only synthetic (09:30 baseline)
  *   - officialInavChange: diagnostic-only official (09:30 baseline)
  */
-const INAV_CUTOFF = '14:30';
+const INAV_CUTOFF = '14:20';
 
 function resolveDay(date, rows) {
     if (rows.length === 0) return [];
@@ -620,7 +627,7 @@ function resolveDay(date, rows) {
     const baseFx = base.fxRate;
     if (!baseEtf) return []; // ETF base is mandatory
 
-    // Find the 14:30 relay anchor: the first row at-or-after 14:30 that has
+    // Find the 14:20 relay anchor: the first row at-or-after 14:20 that has
     // both an official iNAV and a KT price + FX rate. After cutoff we feed
     // KT increments through this anchor instead of re-deriving from 09:30.
     let anchor = null;  // { inav, kt, fx }
@@ -668,7 +675,7 @@ function resolveDay(date, rows) {
             inavChange = officialInavChange;
             inavSource = 'truth';
         } else if (isAfterCutoff && anchor && row.hynixKT != null && row.fxRate != null && baseInav) {
-            // Relay phase: anchor at 14:30 truth, extend with KT + FX increments
+            // Relay phase: anchor at 14:20 truth, extend with KT + FX increments
             const ktChange = (row.hynixKT - anchor.kt) / anchor.kt;     // fraction
             const fxChange = (row.fxRate  - anchor.fx) / anchor.fx;     // fraction
             const relayedInav = anchor.inav * (1 + ktChange * 2 + fxChange);
@@ -764,9 +771,9 @@ export function validateData(data, _mode) {
  * Recalculate the "影子 iNAV" column shown in the backtest table.
  *
  * Two phases — same model as resolveDay():
- *   - Before 14:30: synthetic = baseInav_09:30 × (1 + hxChange×2 + fxChange)
+ *   - Before 14:20: synthetic = baseInav_09:30 × (1 + hxChange×2 + fxChange)
  *     (purely diagnostic — lets users compare to official iNAV in the morning).
- *   - After  14:30: relayed = inav_14:30 × (1 + ΔKT_since_14:30 × 2 + ΔFX)
+ *   - After  14:20: relayed = inav_14:20 × (1 + ΔKT_since_14:20 × 2 + ΔFX)
  *     (this is what the backtest actually uses).
  *
  * Either form requires Hynix + FX of the row, plus the relevant baseline.
@@ -803,12 +810,12 @@ export function updateBacktestShadowColumn() {
         const baseHynix = parseFloat(firstInputs[kpIdx]?.value) || parseFloat(firstInputs[ktIdx]?.value) || null;
         const baseFx = parseFloat(firstInputs[fxIdx]?.value) || null;
 
-        // Find the 14:30 relay anchor for the afternoon (first row at-or-after
-        // 14:30 with both an inav and KT + FX values).
+        // Find the 14:20 relay anchor for the afternoon (first row at-or-after
+        // 14:20 with both an inav and KT + FX values).
         let anchor = null;
         for (const { inputs } of dayRows) {
             const tm = inputs[timeIdx]?.value.trim() || '';
-            if (tm < '14:30') continue;
+            if (tm < '14:20') continue;
             const inav = parseFloat(inputs[inavIdx]?.value);
             const kt   = parseFloat(inputs[ktIdx]?.value);
             const fx   = parseFloat(inputs[fxIdx]?.value);
@@ -823,7 +830,7 @@ export function updateBacktestShadowColumn() {
             if (!shadowInput) continue;
 
             const time = inputs[timeIdx]?.value.trim() || '';
-            const isAfterCutoff = time > '14:30';
+            const isAfterCutoff = time > '14:20';
             const fx = parseFloat(inputs[fxIdx]?.value) || null;
 
             let shadow = null;

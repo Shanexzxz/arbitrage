@@ -21,7 +21,7 @@ function groupByDate(data) {
     return [...groups.values()];
 }
 
-const CUTOFF = '14:30';
+const CUTOFF = '14:20';
 
 /**
  * Run the **position-swap arbitrage** backtest (底仓换仓套利).
@@ -108,16 +108,16 @@ export function runBacktest(data, params) {
 }
 
 /**
- * Analyze divergence stats overall and split by the daily 14:30 cutoff.
+ * Analyze divergence stats overall and split by the daily 14:20 cutoff.
  * Multi-day aware: each day's rows are split independently before being
  * merged into `before` / `after` aggregate buckets.
  *
  * Returns:
  *   - all:    overall stats { maxPremium, maxDiscount, avgAbs, signalCount, count }
- *   - before: rows with row.time <= '14:30' from every day
- *   - after:  rows with row.time >  '14:30' from every day
+ *   - before: rows with row.time <= '14:20' from every day
+ *   - after:  rows with row.time >  '14:20' from every day
  *   - byDate: array of per-day summaries (count, signalCount, maxPremium, maxDiscount, avgAbs)
- *   - cutoff: the cutoff string ('14:30')
+ *   - cutoff: the cutoff string ('14:20')
  *
  * @param {Array} data
  * @param {number} threshold
@@ -175,7 +175,7 @@ function calcStats(rows, threshold) {
 
 /**
  * Find the global indices where each new day starts, plus the global indices
- * that are the first row strictly after 14:30 within each day.
+ * that are the first row strictly after 14:20 within each day.
  * Used by chart renderers to draw per-day cutoff and day-divider lines.
  *
  * @param {Array} data

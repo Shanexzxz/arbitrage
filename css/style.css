@@ -763,6 +763,15 @@ header h1 {
     font-weight: 500;
 }
 
+/* "Pre-cutoff" shadow iNAV (before 14:20): synthetic diagnostic only,
+ * not used by the backtest engine. Render in much softer tones so it
+ * visually recedes vs. the relay-mode shadow values after 14:20. */
+#data-table-container input.shadow-cell.shadow-cell-pre {
+    background: #f8fafc;
+    color: #cbd5e1;
+    font-weight: 400;
+}
+
 /* "Main board closed" placeholder cell — KP after 14:30 */
 #data-table-container input.closed-cell {
     background: #f1f5f9;

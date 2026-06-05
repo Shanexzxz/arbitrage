@@ -170,7 +170,7 @@ function renderPremiumChart(data, trades) {
                 const xScale = scales.x;
                 ctx.save();
 
-                // Per-day 14:30 cutoffs (dashed amber)
+                // Per-day 14:20 cutoffs (dashed amber)
                 ctx.setLineDash([4, 4]);
                 ctx.strokeStyle = 'rgba(202, 138, 4, 0.7)';
                 ctx.lineWidth = 1;

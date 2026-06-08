@@ -1,5 +1,7 @@
 // js/backtest-engine.js
 
+import { TICK_SIZE } from './data-input.js';
+
 /**
  * Group an array of normalized rows by their `date` field.
  * Rows with no date land together under the synthetic key '__single__'.
@@ -21,7 +23,28 @@ function groupByDate(data) {
     return [...groups.values()];
 }
 
+// 14:20 KST = main-board (KP) entering 收盘集合竞价. After this point, the
+// ONLY thing that changes about the iNAV formula is that KP no longer prints
+// (LOCF freezes it automatically inside data-input.resolveDay). The CUTOFF
+// constant is kept purely to slice the divergence statistics into morning vs
+// afternoon buckets — it does NOT branch the iNAV computation any more.
 const CUTOFF = '14:20';
+
+/**
+ * Pick the executable premium for a given trigger direction.
+ *
+ *   - direction = 'sell_etf_buy_stock'  → fills at Bid (use premiumBid)
+ *   - direction = 'buy_etf_sell_stock'  → fills at Ask (use premiumAsk)
+ *   - missing Bid/Ask → falls back to premiumLast
+ *
+ * Returns the (signed) premium in %, ready to be compared against ±threshold.
+ */
+function executablePremium(row, direction) {
+    if (direction === 'sell_etf_buy_stock') {
+        return row.premiumBid != null ? row.premiumBid : row.premiumLast;
+    }
+    return row.premiumAsk != null ? row.premiumAsk : row.premiumLast;
+}
 
 /**
  * Run the **position-swap arbitrage** backtest (底仓换仓套利).
@@ -31,17 +54,23 @@ const CUTOFF = '14:20';
  *     (delta neutrality maintained across the swap).
  *   - When |premium| >= threshold, the trader **immediately swaps** a slice
  *     of the position:
- *       * Premium > 0 (ETF overvalued)  → 卖 ETF / 买 Hynix
- *       * Premium < 0 (ETF undervalued) → 买 ETF / 卖 Hynix（卖出部分底仓）
- *   - The swap **instantly locks in** `|premium| - swapCost` percent of profit.
+ *       * Premium > 0 (ETF overvalued)  → 卖 ETF / 买 Hynix       (fills at Bid)
+ *       * Premium < 0 (ETF undervalued) → 买 ETF / 卖 Hynix底仓    (fills at Ask)
+ *   - The swap **instantly locks in** `|premium_executable| - swapCost` percent.
  *     There is no exit / reversion / stop-loss concept: the post-swap delta
  *     stays neutral, so further price moves do not affect realized P&L.
+ *
+ * Multiple reference prices:
+ *   - The signal-side check still uses `premiumLast` (the visible quote) to
+ *     decide whether the threshold was breached at all.
+ *   - The locked-in profit, however, uses the **executable** side: Bid for a
+ *     sell-ETF swap, Ask for a buy-ETF swap. When Bid/Ask data is absent we
+ *     transparently fall back to Last so legacy datasets keep working.
  *
  * Hysteresis (滞回) to avoid over-trading:
  *   - Each direction (up / down) is independently "armed".
  *   - After a swap fires on direction D, D is disarmed until the premium
  *     comes back within `threshold * 0.5` of zero on that side.
- *   - This means: a slowly widening one-sided drift fires once, not 87 times.
  *
  * Day boundary:
  *   - The two arm flags reset at the start of each new day.
@@ -70,33 +99,47 @@ export function runBacktest(data, params) {
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             const globalIndex = startIndex + i;
-            const premium = row.premiumDiscount;
-            if (premium === null || premium === undefined) continue;
+            const premiumLast = row.premiumLast != null ? row.premiumLast : row.premiumDiscount;
+            if (premiumLast == null) continue;
 
-            // Re-arm whichever side has come back within the inner band.
-            if (premium <  halfBand) armedUp = true;
-            if (premium > -halfBand) armedDown = true;
+            // Re-arm on the visible (Last-based) premium.
+            if (premiumLast <  halfBand) armedUp = true;
+            if (premiumLast > -halfBand) armedDown = true;
 
-            // Fire on the side that is both armed AND beyond threshold.
-            const fireUp   = armedUp   && premium >=  threshold;
-            const fireDown = armedDown && premium <= -threshold;
+            const fireUp   = armedUp   && premiumLast >=  threshold;
+            const fireDown = armedDown && premiumLast <= -threshold;
             if (!fireUp && !fireDown) continue;
 
             const direction = fireUp ? 'sell_etf_buy_stock' : 'buy_etf_sell_stock';
-            const rawProfit = Math.abs(premium);        // locked-in gross %
-            const netProfit = rawProfit - swapCost;     // after the round-trip swap cost
+
+            // Use the executable side for actual locked-in profit.
+            const premiumExec = executablePremium(row, direction);
+            const rawProfit = Math.abs(premiumExec);             // gross %
+            const netProfit = rawProfit - swapCost;
             const profitHKD = netProfit * (tradeAmount / 100);
+
+            // Tick conversion (informational): how many HKD ticks the spread
+            // represents at current Theo. Useful for sanity-checking that the
+            // signal is bigger than micro-structure noise.
+            const theo = row.theoInav || row.inavPrice;
+            const spreadTicks = theo ? (Math.abs(premiumExec) / 100) * theo / TICK_SIZE : null;
 
             swaps.push({
                 date,
                 direction,
                 swapIndex: globalIndex,
                 swapTime: row.time,
-                premium,
+                premium: premiumLast,        // legacy field (Last-based)
+                premiumExec,                 // executable-side
                 rawProfit,
                 netProfit,
                 profitHKD,
                 swapCost,
+                spreadTicks,
+                bias: row.bias,
+                refSide: (row.premiumBid != null && fireUp) ? 'bid'
+                       : (row.premiumAsk != null && fireDown) ? 'ask'
+                       : 'last',
             });
 
             if (fireUp)   armedUp   = false;

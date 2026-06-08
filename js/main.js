@@ -6,6 +6,9 @@ import { calculateStatistics } from './statistics.js';
 import { renderCharts, destroyCharts } from './charts.js';
 import { generateConclusion } from './conclusion.js';
 
+// Tick size of 7709 HK Equity (HKD), used for "spread in ticks" diagnostics.
+const TICK_SIZE = 0.005;
+
 function getParams() {
     return {
         threshold: parseFloat(document.getElementById('threshold').value) || 2.0,
@@ -225,12 +228,19 @@ function executeBacktest() {
     const resultsSection = document.getElementById('backtest-results');
     resultsSection.classList.remove('hidden');
 
+    // Average swap spread in ticks (how big the trigger moves are in HKD ticks)
+    const swapsWithTicks = swaps.filter(s => s.spreadTicks != null);
+    const avgSpreadTicks = swapsWithTicks.length > 0
+        ? swapsWithTicks.reduce((s, t) => s + Math.abs(t.spreadTicks), 0) / swapsWithTicks.length
+        : 0;
+
     // Render simplified stats
     renderStatsPanel({
         totalProfitHKD,
         totalSwaps: swaps.length,
         profitableSwaps: profitableSwaps.length,
         avgProfit: swaps.length > 0 ? totalProfitHKD / swaps.length : 0,
+        avgSpreadTicks,
         upSwaps,
         downSwaps,
         beforeCount: analysis.before.signalCount,
@@ -261,12 +271,13 @@ function renderStatsPanel(stats) {
     const panel = document.getElementById('stats-panel');
     const items = [
         { label: '覆盖天数', value: `${stats.dayCount} 天`, hint: '回测数据涉及的交易日数' },
-        { label: '总锁定收益', value: `${stats.totalProfitHKD.toFixed(0)} HKD`, hint: '所有换仓的累计净收益（已扣手续费）' },
+        { label: '总锁定收益', value: `${stats.totalProfitHKD.toFixed(0)} HKD`, hint: '所有换仓的累计净收益（按可执行偏离扣换仓成本）' },
         { label: '换仓次数', value: `${stats.totalSwaps} 次`, hint: '触发阈值且通过滞回检查的换仓总次数' },
         { label: '盈利换仓', value: `${stats.profitableSwaps} 次`, hint: '锁定毛利 > 单笔成本的换仓数' },
         { label: '平均单次收益', value: `${stats.avgProfit.toFixed(0)} HKD`, hint: '总收益 / 换仓次数' },
-        { label: '卖ETF换仓', value: `${stats.upSwaps} 次`, hint: 'ETF 高估时把 ETF 换回 Hynix 底仓' },
-        { label: '买ETF换仓', value: `${stats.downSwaps} 次`, hint: 'ETF 折价时把 Hynix 底仓换成 ETF' },
+        { label: '平均触发幅度', value: `${stats.avgSpreadTicks.toFixed(0)} ticks`, hint: `换仓时 |Last − Theo| 的平均 tick 数（@ ${TICK_SIZE} HKD/tick）` },
+        { label: '卖ETF换仓', value: `${stats.upSwaps} 次`, hint: 'ETF 高估（Premium）时把 ETF 换回 Hynix 底仓，以 Bid 评估' },
+        { label: '买ETF换仓', value: `${stats.downSwaps} 次`, hint: 'ETF 折价（Discount）时把 Hynix 底仓换成 ETF，以 Ask 评估' },
         { label: '14:20前信号', value: `${stats.beforeCount} 次`, hint: '主板（KP）连续竞价时段超阈值的次数（统计口径，不等于换仓）' },
         { label: '14:20后信号', value: `${stats.afterCount} 次`, hint: '主板收盘后（仅 Next Trade 在盘）超阈值的次数' },
     ];
@@ -355,6 +366,13 @@ function renderTradeLog(swaps) {
             ? '<span style="color:#dc2626">卖 ETF / 买 Hynix</span>'
             : '<span style="color:#2563eb">买 ETF / 卖 Hynix 底仓</span>';
         const pnlColor = t.netProfit >= 0 ? '#16a34a' : '#dc2626';
+        const refTag = t.refSide === 'bid' ? '<span class="ref-tag ref-bid">Bid</span>'
+                     : t.refSide === 'ask' ? '<span class="ref-tag ref-ask">Ask</span>'
+                     : '<span class="ref-tag ref-last">Last</span>';
+        const ticksStr = t.spreadTicks != null ? `${t.spreadTicks.toFixed(0)}` : '-';
+        const execStr = t.premiumExec != null
+            ? `${t.premiumExec >= 0 ? '+' : ''}${t.premiumExec.toFixed(3)}%`
+            : '-';
         return `
         <tr>
             <td>${i + 1}</td>
@@ -362,6 +380,8 @@ function renderTradeLog(swaps) {
             <td>${t.swapTime || t.swapIndex}</td>
             <td>${dirText}</td>
             <td>${t.premium >= 0 ? '+' : ''}${t.premium.toFixed(3)}%</td>
+            <td>${execStr} ${refTag}</td>
+            <td>${ticksStr}</td>
             <td>${t.rawProfit.toFixed(3)}%</td>
             <td style="color:#94a3b8">-${t.swapCost.toFixed(2)}%</td>
             <td style="color:${pnlColor}; font-weight:600">${t.netProfit.toFixed(3)}%</td>
@@ -377,7 +397,9 @@ function renderTradeLog(swaps) {
                     <th>日期</th>
                     <th>换仓时间</th>
                     <th>方向</th>
-                    <th>触发时偏离</th>
+                    <th>Last 偏离</th>
+                    <th>可执行偏离</th>
+                    <th>Spread (ticks)</th>
                     <th>锁定毛利</th>
                     <th>换仓成本</th>
                     <th>净利%</th>
@@ -550,38 +572,36 @@ function setBtImportStatus(text, type = '') {
 
 /**
  * Build the column definition used by the unified backtest data table.
- * 6 columns: 日期 | 时间 | iNAV(HKD) | 海力士股价(KRW) | KRW/HKD汇率 | ETF市价(HKD)
+ * 8 columns: 日期 | 时间 | iNAV | KP | KT | FX | ETF Last | ETF Bid | ETF Ask
+ * (Bid/Ask are optional — leave blank to evaluate using Last only.)
  *
- * Per-row iNAV resolution (truth → shadow → skip) happens in data-input.parseData.
+ * Per-row Theo iNAV resolution happens in data-input.parseData.
  */
 function getBacktestExportColumns() {
     return [
-        { label: '日期',           placeholder: 'YYYY-MM-DD' },
-        { label: '时间',           placeholder: 'HH:MM' },
-        { label: 'iNAV(HKD)',      placeholder: '14:20前' },
-        { label: '海力士股价(KRW)', placeholder: '201000' },
-        { label: 'KRW/HKD汇率',    placeholder: '0.00600' },
-        { label: 'ETF市价(HKD)',   placeholder: '10.15' },
+        { label: '日期',            placeholder: 'YYYY-MM-DD' },
+        { label: '时间',            placeholder: 'HH:MM' },
+        { label: 'iNAV(HKD)',       placeholder: '官方Published' },
+        { label: '海力士KP(KRW)',    placeholder: '主板' },
+        { label: '海力士KT(KRW)',    placeholder: 'NextTrade' },
+        { label: 'KRW/HKD汇率',     placeholder: '0.00520' },
+        { label: 'ETF Last(HKD)',   placeholder: '93.62' },
+        { label: 'ETF Bid(HKD)',    placeholder: '可空' },
+        { label: 'ETF Ask(HKD)',    placeholder: '可空' },
     ];
 }
 
 function downloadBacktestTemplate() {
     const cols = getBacktestExportColumns();
-    // Sample data mimicking real BBG export values (HKD-priced ETF)
+    // Sample data — the same row carries Last + (optional) Bid/Ask.
     const sampleRows = [
-        ['2026-05-21', '09:30', '93.80', '', '', '93.62'],
-        ['2026-05-21', '09:45', '93.99', '', '', '94.12'],
-        ['2026-05-21', '10:00', '93.59', '', '', '94.00'],
-        ['2026-05-21', '10:30', '97.53', '', '', '97.78'],
-        ['2026-05-21', '11:00', '97.04', '', '', '97.10'],
-        ['2026-05-21', '11:30', '98.26', '', '', '98.12'],
-        ['2026-05-21', '13:00', '97.70', '', '', '97.24'],
-        ['2026-05-21', '13:30', '97.50', '', '', '97.30'],
-        ['2026-05-21', '14:00', '98.41', '', '', '98.22'],
-        ['2026-05-21', '14:30', '96.70', '', '', '96.78'],
-        ['2026-05-21', '15:00', '96.04', '', '', '94.50'],
-        ['2026-05-21', '15:30', '96.04', '', '', '93.96'],
-        ['2026-05-21', '16:00', '96.06', '', '', '93.06'],
+        ['2026-05-21', '09:30', '93.80', '1897000', '1897000', '0.005199', '93.62', '93.60', '93.65'],
+        ['2026-05-21', '09:45', '93.99', '1900000', '1901000', '0.005198', '94.12', '94.10', '94.15'],
+        ['2026-05-21', '10:00', '93.59', '1901000', '1900000', '0.005189', '94.00', '93.95', '94.05'],
+        ['2026-05-21', '10:30', '97.53', '1940000', '1940000', '0.005189', '97.78', '97.75', '97.80'],
+        ['2026-05-21', '11:00', '97.04', '1935000', '1935500', '0.005181', '97.10', '97.05', '97.15'],
+        ['2026-05-21', '14:30', '96.70', '',        '1941000', '0.005180', '96.78', '96.75', '96.80'],
+        ['2026-05-21', '15:00', '96.04', '',        '1919000', '0.005180', '94.50', '94.45', '94.55'],
     ];
 
     const header = cols.map(c => c.label);
@@ -662,27 +682,50 @@ function importBacktestFile(file) {
             }
 
             // Map each raw row to the entry shape used by the table.
-            // Legacy templates use a single "海力士股价" column; we mirror it
-            // into both KP and KT so downstream KP-fallback-to-KT logic works.
+            // We support several historical layouts plus the new modern one
+            // that splits Hynix into KP / KT and ETF into Last / Bid / Ask.
+            //
+            //   - Modern 9-col: 日期|时间|iNAV|KP|KT|FX|Last|Bid|Ask
+            //   - Modern 7-col: 日期|时间|iNAV|KP|KT|FX|Last
+            //   - Legacy 6-col: 日期|时间|iNAV|海力士(单列)|FX|ETF
+            //   - Legacy 5-col: 日期|时间|海力士|FX|ETF (no iNAV)
+            //   - Legacy 4-col: 日期|时间|iNAV|ETF       (no Hynix)
+            const headerHasKp  = /KP/i.test(header[3] || '');
+            const headerHasKt  = /KT/i.test(header[4] || '');
+            const isModernSplit = headerHasInav && headerHasKp && headerHasKt;
+
             const mapRow = (r) => {
                 const date = normalizeDate(r[0]);
                 const time = normalizeTime(r[1]);
                 const v = (i) => (r[i] != null && r[i] !== '' ? String(r[i]) : '');
-                let hx = '', fxRate = '', inavPrice = '', etfPrice = '';
-                if (colCount >= 6 || (headerHasInav && colCount > 4)) {
-                    // Modern 6-column layout: 日期|时间|iNAV|海力士|汇率|ETF
-                    inavPrice = v(2); hx = v(3); fxRate = v(4); etfPrice = v(5);
-                } else if (headerHasInav) {
-                    // Legacy: 日期|时间|iNAV|ETF
+                let hxKp = '', hxKt = '', fxRate = '', inavPrice = '';
+                let etfPrice = '', etfBid = '', etfAsk = '';
+
+                if (isModernSplit) {
+                    // 日期|时间|iNAV|KP|KT|FX|Last|[Bid]|[Ask]
+                    inavPrice = v(2);
+                    hxKp = v(3);
+                    hxKt = v(4);
+                    fxRate = v(5);
+                    etfPrice = v(6);
+                    etfBid = v(7);
+                    etfAsk = v(8);
+                } else if (headerHasInav && colCount >= 6) {
+                    // Legacy 6-col: 日期|时间|iNAV|海力士(单列)|FX|ETF
+                    inavPrice = v(2); hxKp = v(3); hxKt = v(3); fxRate = v(4); etfPrice = v(5);
+                } else if (headerHasInav && colCount === 4) {
                     inavPrice = v(2); etfPrice = v(3);
                 } else if (headerHasHynix) {
-                    // Legacy: 日期|时间|海力士|汇率|ETF
-                    hx = v(2); fxRate = v(3); etfPrice = v(4);
+                    hxKp = v(2); hxKt = v(2); fxRate = v(3); etfPrice = v(4);
                 } else {
                     // Unknown: best-effort
-                    inavPrice = v(2); hx = v(3); fxRate = v(4); etfPrice = v(5);
+                    inavPrice = v(2); hxKp = v(3); hxKt = v(3); fxRate = v(4); etfPrice = v(5);
                 }
-                return { date, time, inavPrice, hynixKP: hx, hynixKT: hx, fxRate, etfPrice };
+                return {
+                    date, time, inavPrice,
+                    hynixKP: hxKp, hynixKT: hxKt,
+                    fxRate, etfPrice, etfBid, etfAsk,
+                };
             };
 
             const tbody = document.getElementById('data-tbody');
@@ -744,6 +787,8 @@ function parseBBGBacktestData(rows) {
 
     const inavTicks = blocks.inav.ticks;            // 15s-grid master
     const etfTicks  = blocks.etf?.ticks  || [];
+    const etfBidTicks = blocks.etfBid?.ticks || [];
+    const etfAskTicks = blocks.etfAsk?.ticks || [];
     const kpTicks   = blocks.kp?.ticks   || [];
     const ktTicks   = blocks.kt?.ticks   || [];
 
@@ -769,6 +814,8 @@ function parseBBGBacktestData(rows) {
         };
     };
     const ffEtf = ffCursor(etfTicks);
+    const ffBid = ffCursor(etfBidTicks);
+    const ffAsk = ffCursor(etfAskTicks);
     const ffKp  = ffCursor(kpTicks);
     const ffKt  = ffCursor(ktTicks);
     const ffFx  = ffCursor(fxTicks);
@@ -788,6 +835,8 @@ function parseBBGBacktestData(rows) {
             time,
             inav: t.val,
             etf: ffEtf(t.ts),
+            bid: ffBid(t.ts),
+            ask: ffAsk(t.ts),
             kp:  time > KP_CUTOFF ? null : ffKp(t.ts),
             kt:  ffKt(t.ts),
             fx:  ffFx(t.ts),
@@ -827,6 +876,8 @@ function parseBBGBacktestData(rows) {
             hynixKT: r.kt != null ? String(Math.round(r.kt)) : '',
             fxRate: fxVal,
             etfPrice: r.etf != null ? r.etf.toFixed(2) : '',
+            etfBid: r.bid != null ? r.bid.toFixed(3) : '',
+            etfAsk: r.ask != null ? r.ask.toFixed(3) : '',
         });
     }).join('');
 
@@ -837,7 +888,9 @@ function parseBBGBacktestData(rows) {
         : `${dateSet.size} 天`;
     const parts = [];
     parts.push(`iNAV ${inavTicks.length} ticks`);
-    if (etfTicks.length) parts.push(`ETF ${etfTicks.length}`);
+    if (etfTicks.length) parts.push(`ETF Last ${etfTicks.length}`);
+    if (etfBidTicks.length) parts.push(`Bid ${etfBidTicks.length}`);
+    if (etfAskTicks.length) parts.push(`Ask ${etfAskTicks.length}`);
     if (kpTicks.length)  parts.push(`KP ${kpTicks.length}`);
     if (ktTicks.length)  parts.push(`KT ${ktTicks.length}`);
     if (fxTicks.length)  parts.push(`FX ${fxTicks.length}`);
@@ -872,22 +925,30 @@ function trimLeadingNoEtfRowsPerDay(rows) {
  * Scan rows and return ticker -> { ticks: [{ts, val}] } blocks.
  *
  * Strategy: walk first ~5 rows looking for a cell that matches a ticker keyword,
- * then assume the ticker's data block starts at that column or the next.
- * Each block is 3 columns: [datetime_serial, 'TRADE', value].
+ * then assume the ticker's data block starts at/near that column. Each block
+ * is 3 columns: [datetime_serial, FIELD, value], where FIELD is typically
+ * 'TRADE' but can also be 'BID' / 'ASK' for the same ticker.
  *
- * To be robust, we try the matched column AND its neighbors (+/-1, +/-2) and
- * pick the offset that yields the most valid (datetime, TRADE, number) rows.
+ * For 7709 HK we try to identify all three field-blocks (TRADE / BID / ASK)
+ * separately; for the others (KP/KT/FX/iNAV) we only care about TRADE.
+ *
+ * To be robust we try the matched column AND its neighbors (+/-1, +/-2) and
+ * pick the offset that yields the most valid (datetime, FIELD, number) rows.
  */
 function detectBBGTickerBlocks(rows) {
+    // Logical key → ticker keyword + field filter.
+    // Same ticker (7709 HK) appears 3 times for Last/Bid/Ask.
     const TICKERS = [
-        { key: 'inav', re: /7709\s*IV/i,           label: '7709IV' },
-        { key: 'etf',  re: /7709\s*HK/i,           label: '7709 HK' },
-        { key: 'kp',   re: /000660\s*KP/i,         label: '000660 KP' },
-        { key: 'kt',   re: /000660\s*KT/i,         label: '000660 KT' },
-        { key: 'fx',   re: /KRW(\s|HKD)*Curncy/i,  label: 'KRW Curncy' },
+        { key: 'inav',   re: /7709\s*IV/i,          field: 'TRADE' },
+        { key: 'etf',    re: /7709\s*HK/i,          field: 'TRADE' },
+        { key: 'etfBid', re: /7709\s*HK/i,          field: 'BID' },
+        { key: 'etfAsk', re: /7709\s*HK/i,          field: 'ASK' },
+        { key: 'kp',     re: /000660\s*KP/i,        field: 'TRADE' },
+        { key: 'kt',     re: /000660\s*KT/i,        field: 'TRADE' },
+        { key: 'fx',     re: /KRW(\s|HKD)*Curncy/i, field: 'TRADE' },
     ];
 
-    // Find candidate starting columns for each ticker by scanning the first few rows.
+    // Candidate start columns per logical key.
     const headerRows = rows.slice(0, 5);
     const candidates = {};
     for (const t of TICKERS) {
@@ -902,9 +963,12 @@ function detectBBGTickerBlocks(rows) {
         candidates[t.key] = [...cands];
     }
 
-    // For each ticker, scan all rows starting from each candidate column-offset
-    // and try offsets {-2,-1,0,1,2} for the date column, then pick whichever
-    // produces the most ticks. The block is [date, 'TRADE', value].
+    // Also: for 7709 HK BID/ASK blocks, the second column of each 3-column
+    // block carries the field tag itself ("BID"/"ASK"/"TRADE"). So when
+    // multiple 7709 HK blocks exist side by side, we additionally filter by
+    // matching the FIELD cell to disambiguate which block belongs to which key.
+    const usedCols = new Set();   // avoid two keys claiming the same start col
+
     const result = {};
     for (const t of TICKERS) {
         let best = { ticks: [], startCol: -1 };
@@ -912,31 +976,34 @@ function detectBBGTickerBlocks(rows) {
             for (const off of [0, -2, -1, 1, 2]) {
                 const startCol = c + off;
                 if (startCol < 0) continue;
-                const ticks = extractTickBlock(rows, startCol);
+                if (usedCols.has(startCol)) continue;
+                const ticks = extractTickBlock(rows, startCol, t.field);
                 if (ticks.length > best.ticks.length) {
                     best = { ticks, startCol };
                 }
             }
         }
         if (best.ticks.length > 0) {
-            // sort by timestamp ascending
             best.ticks.sort((a, b) => a.ts - b.ts);
             result[t.key] = best;
+            usedCols.add(best.startCol);
         }
     }
     return result;
 }
 
 /**
- * Extract a [datetime_serial, 'TRADE', numeric_value] block starting at column
- * `startCol`. Returns [{ts: ms, val: number}] for every valid row.
+ * Extract a [datetime_serial, FIELD, numeric_value] block starting at column
+ * `startCol`. Returns [{ts: ms, val: number}] for every valid row matching
+ * the requested `field` (default 'TRADE'; can be 'BID' / 'ASK').
  *
  * BBG often forward-fills the same (ts, val) across thousands of consecutive
  * rows when aligning to a master grid (e.g. KP keeps repeating its last trade
  * once a minute). We collapse such immediate duplicates to keep tick lists
  * lean — the LOCF cursor downstream produces identical results either way.
  */
-function extractTickBlock(rows, startCol) {
+function extractTickBlock(rows, startCol, field = 'TRADE') {
+    const targetField = String(field).toUpperCase();
     const out = [];
     let lastTs = -1;
     let lastVal = NaN;
@@ -946,7 +1013,7 @@ function extractTickBlock(rows, startCol) {
         const tagCell = row[startCol + 1];
         const valCell = row[startCol + 2];
         if (typeof dtCell !== 'number' || dtCell <= 40000) continue;
-        if (String(tagCell ?? '').toUpperCase() !== 'TRADE') continue;
+        if (String(tagCell ?? '').toUpperCase() !== targetField) continue;
         if (typeof valCell !== 'number' || !isFinite(valCell)) continue;
         const ts = serialToMs(dtCell);
         if (ts === lastTs && valCell === lastVal) continue;       // exact dup
@@ -1470,21 +1537,23 @@ function refreshDashboard() {
 
 /**
  * Show the latest divergence as a text indicator in the dashboard area.
- * Uses the last valid row's data to display ETF price, iNAV, divergence %, and action hint.
+ * Mirrors the layout of the desk's "Premium / Discount Monitor" sheet —
+ * shows ETF Last + Theo iNAV + Bias + Spread-in-ticks + suggested action.
  */
 function renderDashboardDivergenceIndicator(data) {
     const container = document.getElementById('dashboard-divergence-indicator');
     if (!container) return;
 
-    // Find last row with valid premium
     const lastRow = [...data].reverse().find(r => r.premiumDiscount != null);
     if (!lastRow) { container.innerHTML = ''; return; }
 
     const divergence = lastRow.premiumDiscount;
     const absDivergence = Math.abs(divergence);
     const etf = lastRow.etfPrice;
-    const inav = lastRow.inavPrice;
+    const theo = lastRow.theoInav;
     const time = lastRow.time || '';
+    const bias = lastRow.bias || (divergence > 0.05 ? 'premium' : divergence < -0.05 ? 'discount' : 'flat');
+    const ticks = (theo && etf) ? Math.round((etf - theo) / TICK_SIZE) : null;
 
     let signalClass = '';
     let actionText = '';
@@ -1503,20 +1572,28 @@ function renderDashboardDivergenceIndicator(data) {
     }
 
     const valueClass = divergence > 0.1 ? 'positive' : (divergence < -0.1 ? 'negative' : 'neutral');
+    const biasTag = bias === 'premium'  ? '<span class="bias-tag bias-premium">Premium</span>'
+                  : bias === 'discount' ? '<span class="bias-tag bias-discount">Discount</span>'
+                  :                       '<span class="bias-tag bias-flat">Flat</span>';
+    const ticksStr = ticks != null ? `${ticks >= 0 ? '+' : ''}${ticks} ticks` : '-';
 
     container.innerHTML = `
         <div class="div-card">
-            <div class="div-value neutral">${etf ? etf.toFixed(2) : '-'}</div>
-            <div class="div-label">ETF 最新价 (HKD)</div>
+            <div class="div-value neutral">${etf ? etf.toFixed(3) : '-'}</div>
+            <div class="div-label">ETF Last (HKD)</div>
         </div>
         <div class="div-card">
-            <div class="div-value neutral">${inav ? inav.toFixed(2) : '-'}</div>
-            <div class="div-label">iNAV (HKD)</div>
+            <div class="div-value neutral">${theo ? theo.toFixed(3) : '-'}</div>
+            <div class="div-label">Theo iNAV (HKD)</div>
         </div>
         <div class="div-card ${signalClass}">
             <div class="div-value ${valueClass}">${divergence >= 0 ? '+' : ''}${divergence.toFixed(3)}%</div>
-            <div class="div-label">最新偏离度</div>
+            <div class="div-label">偏离度 ${biasTag}</div>
             <div class="div-action ${actionClass}">${actionText}</div>
+        </div>
+        <div class="div-card">
+            <div class="div-value neutral">${ticksStr}</div>
+            <div class="div-label">Spread (ticks @ ${TICK_SIZE})</div>
         </div>
         <div class="div-card">
             <div class="div-value neutral">${time}</div>

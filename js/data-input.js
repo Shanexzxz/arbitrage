@@ -1,20 +1,54 @@
 // js/data-input.js
 
 // Unified column schema for the backtest table.
-// 14:20前用官方iNAV，14:20后用KT股价计算影子iNAV替代（主板进入收盘集合竞价后
-// 官方 iNAV 不再可靠）。
+//
+// Theoretical iNAV model (used at all times, no time-zone gating):
+//
+//     Theo_iNAV(t) = Published_iNAV × (1 + L × r),
+//     where r = KT(t) / KP_ref(t) - 1,  L = 2.
+//
+// KP_ref:
+//   - During main-board hours: latest KP tick.
+//   - After 14:20: KP freezes at the 14:20 tick — the engine simply carries
+//     forward the last KP it saw (LOCF).
+//   - For the day's very first row (or any row before KP has printed),
+//     fall back to `prevKrxClose` if the user supplied one; otherwise the
+//     row's own KP / KT (so r ≈ 0 and Theo ≈ Published).
+//
 // KP = 000660 KP Equity (主板连续竞价 09:00-14:20 + 14:30 收盘集合竞价)
 // KT = 000660 KT Equity (Next Trade 盘后延伸至 16:30)
+//
+// ETF reference prices: we now track Last AND Bid/Offer when available, so
+// the backtest can evaluate executable premium per direction:
+//   - Sell-ETF leg fills at Bid (worst case for the seller)
+//   - Buy-ETF  leg fills at Ask (worst case for the buyer)
 const COLUMNS = [
     { key: 'date',       label: '日期',          type: 'text',   placeholder: 'YYYY-MM-DD' },
     { key: 'time',       label: '时间',          type: 'text',   placeholder: 'HH:MM' },
     { key: 'inavPrice',  label: 'iNAV(HKD)',     type: 'number', placeholder: '官方值' },
-    { key: 'shadowInav', label: '影子iNAV',      type: 'number', placeholder: '自动计算', readonly: true },
+    { key: 'theoInav',   label: '理论iNAV',      type: 'number', placeholder: '自动计算', readonly: true },
     { key: 'hynixKP',    label: '海力士KP(KRW)',  type: 'number', placeholder: '主板' },
     { key: 'hynixKT',    label: '海力士KT(KRW)',  type: 'number', placeholder: 'NextTrade' },
     { key: 'fxRate',     label: 'KRW/HKD汇率',    type: 'number', placeholder: '0.005200' },
-    { key: 'etfPrice',   label: 'ETF市价(HKD)',   type: 'number', placeholder: '93.62' },
+    { key: 'etfPrice',   label: 'ETF Last',       type: 'number', placeholder: '93.62' },
+    { key: 'etfBid',     label: 'ETF Bid',        type: 'number', placeholder: '可空' },
+    { key: 'etfAsk',     label: 'ETF Ask',        type: 'number', placeholder: '可空' },
 ];
+
+// 7709 HK tick size (HKD) — used to express premium spreads in ticks for the
+// "spread in ticks" diagnostics, matching how the live monitor sheet reports.
+export const TICK_SIZE = 0.005;
+export const LEVERAGE = 2;
+// Day-level previous KRX close, optional. When set, used as KP_ref denominator
+// before the day's first KP tick prints.
+let prevKrxCloseByDate = new Map();
+export function setPrevKrxClose(date, value) {
+    if (date) prevKrxCloseByDate.set(date, value);
+}
+export function getPrevKrxClose(date) {
+    return prevKrxCloseByDate.get(date) ?? null;
+}
+export function clearPrevKrxClose() { prevKrxCloseByDate = new Map(); }
 
 // Demo data from actual BBG export (2026-05-21), 1-minute granularity (420 rows, 09:30-16:29).
 // 与"导入 BBG Excel"得到的结果完全一致：iNAV 取每分钟首个 15s tick 作为快照，
@@ -451,22 +485,59 @@ function getDemoData() {
 }
 
 /**
- * Render the baseline notice. Baselines are now derived automatically from the
- * first row of each trading day, so this section only renders an informational
- * tip; the previous explicit input fields are retired.
+ * Render the baseline notice + the day-level "previous KRX close" input.
+ *
+ * Baselines (per-day first row) are derived automatically. The only optional
+ * day-level input is `prevKrxClose` (000660 KP previous-trading-day close),
+ * which serves as the strictly-correct r-denominator before the day's first
+ * KP tick has printed (per the desk's caveats sheet).
  */
 export function renderBaseline(container) {
     container.innerHTML = `
         <div class="baseline-notice">
-            <div class="baseline-notice-row"><strong>基准价格</strong>：自动取每个交易日<strong>第一行</strong>（通常为 09:30 开盘值），无需手动填写。</div>
-            <div class="baseline-notice-row"><strong>iNAV 来源</strong>：每行<strong>独立判断</strong>。</div>
+            <div class="baseline-notice-row"><strong>理论 iNAV 公式</strong>：
+                <code>Theo = Published × (1 + 2 × (KT / KP_ref − 1))</code>
+                — 全天通用，不再区分 14:20 前后。
+            </div>
+            <div class="baseline-notice-row"><strong>KP_ref</strong>：取该行截至当前的最后一笔 KP（14:20 后自然冻结）；若当日尚无 KP，可选用"前一日 KRX 收盘"作为基准（更严格）。</div>
+            <div class="baseline-notice-row"><strong>基准价格</strong>：%-涨跌仍按每日第一行自动锚定。</div>
             <ul class="baseline-notice-list">
-                <li><span class="tag-truth">真 iNAV</span> 该行 <code>iNAV(HKD)</code> 列有值时直接使用，最准。建议从 BBG <code>7709IV HK Equity</code> 导出 09:30–14:20 的分钟数据。</li>
-                <li><span class="tag-shadow">影子 iNAV</span> 该行 <code>iNAV(HKD)</code> 留空、但 <code>海力士股价</code> 与 <code>汇率</code> 都有值时，系统按 <code>海力士涨跌% × 2 + 汇率涨跌%</code> 自动合成（用于覆盖 14:20 之后 BBG 停更的窗口）。</li>
-                <li><span class="tag-skip">跳过</span> 三者都不全的行不参与回测。</li>
+                <li><span class="tag-truth">参与回测</span> 该行有 <code>Published iNAV</code> + <code>KT</code> 即可计算 Theo 并参与触发判定。</li>
+                <li><span class="tag-shadow">Bid / Ask</span> 留空可，则按 ETF Last 评估；填上后回测会按"卖 ETF 用 Bid、买 ETF 用 Ask"的可执行价分别评估。</li>
+                <li><span class="tag-skip">跳过</span> 缺 Published 或缺 KT 的行不参与回测。</li>
             </ul>
+            <div class="baseline-notice-row" style="margin-top:0.6rem;">
+                <label for="prev-krx-close" style="font-weight:600;">前一日 KRX 收盘 (KRW)</label>
+                <input id="prev-krx-close" type="number" step="any" placeholder="可空 — 不填则用当日首笔 KP" style="margin-left:0.5rem; padding:0.2rem 0.4rem; width:140px;">
+                <span class="hint" style="margin-left:0.5rem; color:var(--color-text-muted); font-size:0.78rem;">仅用作早盘 KP_ref 的更严格 fallback。多日数据时只对单日生效，不填则忽略。</span>
+            </div>
         </div>
     `;
+
+    const prev = container.querySelector('#prev-krx-close');
+    if (prev) {
+        prev.addEventListener('input', () => {
+            const v = parseFloat(prev.value);
+            // Apply to all dates currently in the table (single day or all of multi-day).
+            clearPrevKrxClose();
+            if (!isNaN(v) && v > 0) {
+                const tbody = document.getElementById('data-tbody');
+                if (tbody) {
+                    const dateIdx = COLUMNS.findIndex(c => c.key === 'date');
+                    const seen = new Set();
+                    for (const tr of tbody.querySelectorAll('tr')) {
+                        const inputs = tr.querySelectorAll('input');
+                        const d = inputs[dateIdx]?.value.trim() || '__single__';
+                        if (seen.has(d)) continue;
+                        seen.add(d);
+                        setPrevKrxClose(d, v);
+                    }
+                }
+            }
+            updateBacktestShadowColumn();
+            container.dispatchEvent(new CustomEvent('prevclose:changed', { bubbles: true }));
+        });
+    }
 }
 
 /**
@@ -500,10 +571,9 @@ export function renderRowHTML(rowData) {
 
 function generateRowWithData(rowData) {
     // After 14:20 the KOSPI main board is closed (集合竞价开始) → render
-    // hynixKP as a disabled placeholder cell, AND the shadow iNAV column
-    // becomes the engine's actual decision input (relay-mode).
-    // Before 14:20 the shadow column is purely a synthetic vs official-iNAV
-    // diagnostic, so we render it with a softer style ("shadow-cell-pre").
+    // hynixKP as a disabled placeholder cell. The 理论 iNAV column (computed
+    // by updateBacktestShadowColumn) is the engine's actual decision input
+    // for the entire day, so it renders the same way before and after 14:20.
     const time = rowData?.time || '';
     const isMainBoardClosed = time && time > '14:20';
 
@@ -515,14 +585,7 @@ function generateRowWithData(rowData) {
         }
 
         const readonlyAttr = c.readonly ? 'readonly tabindex="-1"' : '';
-        let cls = '';
-        if (c.key === 'shadowInav') {
-            cls = isMainBoardClosed
-                ? ' class="shadow-cell"'           // active value used by engine
-                : ' class="shadow-cell shadow-cell-pre"';  // diagnostic only
-        } else if (c.readonly) {
-            cls = ' class="shadow-cell"';
-        }
+        const cls = c.readonly ? ' class="shadow-cell"' : '';
         return `<td><input type="${c.type}" data-key="${c.key}" placeholder="${c.placeholder}" step="any" value="${value}" ${readonlyAttr}${cls}></td>`;
     }).join('');
     return `<tr>${cells}</tr>`;
@@ -592,29 +655,51 @@ function readRows() {
 /**
  * Resolve a single day's rows into engine-ready records.
  *
- * iNAV resolution strategy ("relay" model):
- *   - Before 14:20  → use the official iNAV directly (truth).
- *   - After  14:20  → official BBG iNAV freezes (Hynix main board closed),
- *                     so we *relay* from the 14:20 truth value:
- *                         shadow_iNAV(t) = iNAV_14:20
- *                                        × (1 + ΔKT_since_14:20 × 2
- *                                           + ΔFX_since_14:20)
- *                     This preserves the fund's intrinsic costs
- *                     (management fee, leverage decay, roll cost) that
- *                     official iNAV already encodes, instead of re-synthesizing
- *                     the whole day from a flat 09:30 baseline.
+ * Theoretical iNAV (single formula, used at every row):
  *
- * For diagnostics (validation chart), we still compute a "synthetic"
- * shadow_iNAV_change against the 09:30 baseline, so users can compare it
- * to the official iNAV throughout the morning session.
+ *     Theo(t) = Published_iNAV(t) × (1 + L × r),
+ *     r       = KT(t) / KP_ref(t) - 1
+ *     L       = 2
+ *
+ * KP_ref selection per row:
+ *   1. The latest KP tick we have observed at-or-before `t` (LOCF). KP stops
+ *      ticking after 14:20 KST (main-board close), so this naturally freezes
+ *      to the 14:20 print, which is exactly what the live monitor sheet uses
+ *      ("KRX_last").
+ *   2. If no KP has printed yet (very first rows of the day), fall back to:
+ *        a) `prevKrxClose` for the day, if the user supplied one (the
+ *           strictly-correct S₀ per the desk's docs); else
+ *        b) the row's own KT — making r ≈ 0 and Theo ≈ Published.
+ *
+ * Premium / Discount is computed separately per ETF reference price:
+ *   - premiumLast = (Last - Theo) / Theo
+ *   - premiumBid  = (Bid  - Theo) / Theo
+ *   - premiumAsk  = (Ask  - Theo) / Theo
+ *   - premiumMid  = ((Bid+Ask)/2 - Theo) / Theo
+ *
+ * The "executable" premium per direction:
+ *   - Selling ETF (premium > 0)  → Bid     (worst case for the seller)
+ *   - Buying  ETF (premium < 0)  → Ask     (worst case for the buyer)
+ *   When Bid/Ask absent, falls back to Last.
  *
  * Each output row carries:
- *   - inavChange:        the value used by the backtest
- *   - inavSource:        'truth' | 'shadow' (for UI badges)
- *   - shadowInavChange:  diagnostic-only synthetic (09:30 baseline)
- *   - officialInavChange: diagnostic-only official (09:30 baseline)
+ *   - theoInav            HKD value of the theoretical iNAV
+ *   - inavChange          theoretical iNAV %-change vs day's first row
+ *   - etfChange           ETF Last %-change (kept for charts)
+ *   - premiumDiscount     legacy field = (ETF_last - Theo) / Theo  (== premiumLast)
+ *   - premiumLast/Bid/Ask/Mid     all in %
+ *   - premiumExecutable   Bid for sell-side, Ask for buy-side (rebuilt by engine)
+ *   - bias                'premium' | 'discount' | 'flat'  (Flat: |x| < 0.05%)
+ *   - spreadTicks         |Last - Theo| / TICK_SIZE  (in ticks)
+ *   - inavSource          'truth' if Published was present this row, else 'derived'
+ *                          (rows fully missing Published just skip)
+ *   - kpRef / kpRefSource diagnostic — what we used as r-denominator
+ *
+ *   Legacy diagnostic fields for the validation charts:
+ *   - shadowInavChange    synthetic vs 09:30 (Hynix×2 + FX)
+ *   - officialInavChange  Published vs 09:30
  */
-const INAV_CUTOFF = '14:20';
+const FLAT_BAND_PCT = 0.05;  // |premium| < this → "Flat"
 
 function resolveDay(date, rows) {
     if (rows.length === 0) return [];
@@ -622,89 +707,101 @@ function resolveDay(date, rows) {
 
     const baseInav = base.inavPrice;
     const baseEtf = base.etfPrice;
-    // Hynix baseline: prefer KP (main board opening), fallback to KT
     const baseHynix = base.hynixKP || base.hynixKT;
     const baseFx = base.fxRate;
-    if (!baseEtf) return []; // ETF base is mandatory
+    if (!baseEtf) return [];
 
-    // Find the 14:20 relay anchor: the first row at-or-after 14:20 that has
-    // both an official iNAV and a KT price + FX rate. After cutoff we feed
-    // KT increments through this anchor instead of re-deriving from 09:30.
-    let anchor = null;  // { inav, kt, fx }
-    for (const row of rows) {
-        if (!row.time || row.time < INAV_CUTOFF) continue;
-        const kt = row.hynixKT;
-        if (row.inavPrice != null && kt != null && row.fxRate != null) {
-            anchor = { inav: row.inavPrice, kt, fx: row.fxRate };
-            break;
-        }
-    }
+    // Day-level optional previous KRX close, used when KP hasn't printed yet.
+    const dayKey = date === '__single__' ? '__single__' : date;
+    const prevClose = getPrevKrxClose(dayKey) || null;
+
+    // LOCF cursor over KP — captures 14:20 freeze automatically.
+    let kpLast = null;
 
     const out = [];
     for (const row of rows) {
         if (row.etfPrice === null || row.etfPrice === undefined) continue;
 
-        const etfChange = ((row.etfPrice - baseEtf) / baseEtf) * 100;
-        const isAfterCutoff = row.time && row.time > INAV_CUTOFF;
+        // Update KP LOCF tracker
+        if (row.hynixKP != null) kpLast = row.hynixKP;
+
+        const etfLast = row.etfPrice;
+        const etfBid = (row.etfBid != null ? row.etfBid : null);
+        const etfAsk = (row.etfAsk != null ? row.etfAsk : null);
+        const etfMid = (etfBid != null && etfAsk != null) ? (etfBid + etfAsk) / 2 : null;
+
+        const etfChange = ((etfLast - baseEtf) / baseEtf) * 100;
+
+        // ---- Theoretical iNAV (the single formula, all-day) ----
+        // Need: published iNAV + KT + a sensible KP_ref to compute r.
+        let theoInav = null;
+        let kpRef = null;
+        let kpRefSource = null;
+        if (kpLast != null)            { kpRef = kpLast;       kpRefSource = 'kp_locf'; }
+        else if (prevClose != null)    { kpRef = prevClose;    kpRefSource = 'prev_close'; }
+        else if (row.hynixKT != null)  { kpRef = row.hynixKT;  kpRefSource = 'kt_self'; }
+
+        let r = null;
+        if (kpRef != null && row.hynixKT != null && kpRef > 0) {
+            r = row.hynixKT / kpRef - 1;
+        }
+        if (row.inavPrice != null && r != null) {
+            theoInav = row.inavPrice * (1 + LEVERAGE * r);
+        }
 
         // ---- Diagnostic series (always vs 09:30 baseline) ----
-        // Synthetic shadow uses KP before cutoff, KT after — same convention
-        // as before, kept purely for the validation chart that compares
-        // synthetic vs official across the morning.
-        const diagHynix = isAfterCutoff
-            ? (row.hynixKT || null)
-            : (row.hynixKP || row.hynixKT || null);
+        const diagHynix = row.hynixKP || row.hynixKT || null;
         let shadowInavChange = null;
         if (diagHynix && baseHynix && baseFx && row.fxRate) {
             const hynixChange = ((diagHynix - baseHynix) / baseHynix) * 100;
             const fxChange = ((row.fxRate - baseFx) / baseFx) * 100;
             shadowInavChange = hynixChange * 2 + fxChange;
         }
-
         let officialInavChange = null;
-        if (row.inavPrice !== null && row.inavPrice !== undefined && baseInav) {
+        if (row.inavPrice != null && baseInav) {
             officialInavChange = ((row.inavPrice - baseInav) / baseInav) * 100;
         }
 
-        // ---- Decide the iNAV used by the backtest engine ----
-        let inavChange = null;
-        let inavSource = null;
+        // Skip rows where we can't compute Theo (missing Published or no KP_ref).
+        if (theoInav == null) continue;
 
-        if (!isAfterCutoff && officialInavChange !== null) {
-            // Truth phase: pure official iNAV
-            inavChange = officialInavChange;
-            inavSource = 'truth';
-        } else if (isAfterCutoff && anchor && row.hynixKT != null && row.fxRate != null && baseInav) {
-            // Relay phase: anchor at 14:20 truth, extend with KT + FX increments
-            const ktChange = (row.hynixKT - anchor.kt) / anchor.kt;     // fraction
-            const fxChange = (row.fxRate  - anchor.fx) / anchor.fx;     // fraction
-            const relayedInav = anchor.inav * (1 + ktChange * 2 + fxChange);
-            inavChange = (relayedInav - baseInav) / baseInav * 100;
-            inavSource = 'shadow';
-        } else if (officialInavChange !== null) {
-            // Fallback: stale official iNAV (no anchor / no KT update)
-            inavChange = officialInavChange;
-            inavSource = 'truth';
-        } else if (shadowInavChange !== null) {
-            // Last-resort fallback: pure synthetic vs 09:30 (legacy behavior)
-            inavChange = shadowInavChange;
-            inavSource = 'shadow';
-        } else {
-            continue;
-        }
+        // ---- Premiums vs Theoretical iNAV ----
+        const pLast = (etfLast - theoInav) / theoInav * 100;
+        const pBid  = etfBid != null ? (etfBid - theoInav) / theoInav * 100 : null;
+        const pAsk  = etfAsk != null ? (etfAsk - theoInav) / theoInav * 100 : null;
+        const pMid  = etfMid != null ? (etfMid - theoInav) / theoInav * 100 : null;
+
+        const inavChange = (theoInav - baseInav) / baseInav * 100;
+
+        // Bias label per Last
+        let bias = 'flat';
+        if (pLast >  FLAT_BAND_PCT) bias = 'premium';
+        if (pLast < -FLAT_BAND_PCT) bias = 'discount';
+
+        // Spread in ticks (Last vs Theo, signed)
+        const spreadTicks = (etfLast - theoInav) / TICK_SIZE;
 
         out.push({
             date: date === '__single__' ? '' : date,
             time: row.time,
             inavPrice: row.inavPrice,
+            theoInav,
             hynixKP: row.hynixKP,
             hynixKT: row.hynixKT,
             fxRate: row.fxRate,
-            etfPrice: row.etfPrice,
+            etfPrice: etfLast,
+            etfBid, etfAsk, etfMid,
             inavChange,
             etfChange,
-            premiumDiscount: etfChange - inavChange,
-            inavSource,
+            premiumDiscount: pLast,           // legacy alias
+            premiumLast: pLast,
+            premiumBid: pBid,
+            premiumAsk: pAsk,
+            premiumMid: pMid,
+            bias,
+            spreadTicks,
+            inavSource: 'truth',              // single-formula model — always Theo
+            kpRef, kpRefSource,
             shadowInavChange,
             officialInavChange,
         });
@@ -768,15 +865,15 @@ export function validateData(data, _mode) {
 }
 
 /**
- * Recalculate the "影子 iNAV" column shown in the backtest table.
+ * Recalculate the "理论 iNAV" column shown in the backtest table.
  *
- * Two phases — same model as resolveDay():
- *   - Before 14:20: synthetic = baseInav_09:30 × (1 + hxChange×2 + fxChange)
- *     (purely diagnostic — lets users compare to official iNAV in the morning).
- *   - After  14:20: relayed = inav_14:20 × (1 + ΔKT_since_14:20 × 2 + ΔFX)
- *     (this is what the backtest actually uses).
+ * Single all-day formula (matches resolveDay()):
+ *   Theo = Published × (1 + L × (KT/KP_ref - 1))
  *
- * Either form requires Hynix + FX of the row, plus the relevant baseline.
+ * KP_ref:
+ *   - LOCF over the day's KP column (so it freezes at the 14:20 print).
+ *   - If no KP yet, use prevKrxClose for the day if set, else fall back to
+ *     KT (r ≈ 0 → Theo ≈ Published).
  */
 export function updateBacktestShadowColumn() {
     const tbody = document.getElementById('data-tbody');
@@ -784,17 +881,14 @@ export function updateBacktestShadowColumn() {
     const rows = [...tbody.querySelectorAll('tr')];
     if (rows.length === 0) return;
 
-    // Find column indices
-    const shadowIdx = COLUMNS.findIndex(c => c.key === 'shadowInav');
-    if (shadowIdx < 0) return;
+    const theoIdx = COLUMNS.findIndex(c => c.key === 'theoInav');
+    if (theoIdx < 0) return;
     const dateIdx = COLUMNS.findIndex(c => c.key === 'date');
-    const timeIdx = COLUMNS.findIndex(c => c.key === 'time');
     const inavIdx = COLUMNS.findIndex(c => c.key === 'inavPrice');
     const kpIdx = COLUMNS.findIndex(c => c.key === 'hynixKP');
     const ktIdx = COLUMNS.findIndex(c => c.key === 'hynixKT');
-    const fxIdx = COLUMNS.findIndex(c => c.key === 'fxRate');
 
-    // Group rows by date
+    // Group rows by date so KP-LOCF resets across day boundaries.
     const groups = new Map();
     for (const tr of rows) {
         const inputs = tr.querySelectorAll('input');
@@ -803,58 +897,30 @@ export function updateBacktestShadowColumn() {
         groups.get(date).push({ tr, inputs });
     }
 
-    for (const [, dayRows] of groups) {
-        if (dayRows.length === 0) continue;
-        const firstInputs = dayRows[0].inputs;
-        const baseInav = parseFloat(firstInputs[inavIdx]?.value) || null;
-        const baseHynix = parseFloat(firstInputs[kpIdx]?.value) || parseFloat(firstInputs[ktIdx]?.value) || null;
-        const baseFx = parseFloat(firstInputs[fxIdx]?.value) || null;
+    for (const [date, dayRows] of groups) {
+        const prevClose = getPrevKrxClose(date) || null;
+        let kpLast = null;
 
-        // Find the 14:20 relay anchor for the afternoon (first row at-or-after
-        // 14:20 with both an inav and KT + FX values).
-        let anchor = null;
         for (const { inputs } of dayRows) {
-            const tm = inputs[timeIdx]?.value.trim() || '';
-            if (tm < '14:20') continue;
+            const theoCell = inputs[theoIdx];
+            if (!theoCell) continue;
+
             const inav = parseFloat(inputs[inavIdx]?.value);
+            const kp   = parseFloat(inputs[kpIdx]?.value);
             const kt   = parseFloat(inputs[ktIdx]?.value);
-            const fx   = parseFloat(inputs[fxIdx]?.value);
-            if (!isNaN(inav) && !isNaN(kt) && !isNaN(fx)) {
-                anchor = { inav, kt, fx };
-                break;
+
+            if (!isNaN(kp)) kpLast = kp;
+
+            let kpRef = null;
+            if (kpLast != null)         kpRef = kpLast;
+            else if (prevClose != null) kpRef = prevClose;
+            else if (!isNaN(kt))        kpRef = kt;
+
+            let theo = null;
+            if (!isNaN(inav) && !isNaN(kt) && kpRef != null && kpRef > 0) {
+                theo = inav * (1 + LEVERAGE * (kt / kpRef - 1));
             }
-        }
-
-        for (const { inputs } of dayRows) {
-            const shadowInput = inputs[shadowIdx];
-            if (!shadowInput) continue;
-
-            const time = inputs[timeIdx]?.value.trim() || '';
-            const isAfterCutoff = time > '14:20';
-            const fx = parseFloat(inputs[fxIdx]?.value) || null;
-
-            let shadow = null;
-            if (isAfterCutoff && anchor) {
-                // Relay phase
-                const kt = parseFloat(inputs[ktIdx]?.value) || null;
-                if (kt && fx) {
-                    const ktChange = (kt - anchor.kt) / anchor.kt;
-                    const fxChange = (fx - anchor.fx) / anchor.fx;
-                    shadow = anchor.inav * (1 + ktChange * 2 + fxChange);
-                }
-            } else {
-                // Synthetic (morning diagnostic, vs 09:30 baseline)
-                const hynix = parseFloat(inputs[kpIdx]?.value)
-                           || parseFloat(inputs[ktIdx]?.value)
-                           || null;
-                if (baseInav && baseHynix && baseFx && hynix && fx) {
-                    const hynixChange = (hynix - baseHynix) / baseHynix;
-                    const fxChange = (fx - baseFx) / baseFx;
-                    shadow = baseInav * (1 + hynixChange * 2) * (1 + fxChange);
-                }
-            }
-
-            shadowInput.value = shadow != null ? shadow.toFixed(4) : '';
+            theoCell.value = theo != null ? theo.toFixed(4) : '';
         }
     }
 }

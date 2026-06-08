@@ -70,11 +70,11 @@
             <div class="dashboard-stats">
                 <div class="dashboard-split">
                     <div class="dashboard-period">
-                        <h4>14:20前（官方iNAV）</h4>
+                        <h4>14:20前（KOSPI 主板在盘）</h4>
                         <div class="mini-stats" id="before-stats"></div>
                     </div>
                     <div class="dashboard-period">
-                        <h4>14:20后（影子iNAV/KT）</h4>
+                        <h4>14:20后（仅 Next Trade 在盘）</h4>
                         <div class="mini-stats" id="after-stats"></div>
                     </div>
                 </div>
@@ -186,78 +186,52 @@
             <div id="guide-content" class="collapsible">
                 <div class="guide-grid">
                     <div class="guide-card">
-                        <h3>直接使用 iNAV</h3>
-                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">适用于数据源可直接提供 iNAV（如 Bloomberg 7709IV Index），只需对比 iNAV 和 ETF 市价</p>
+                        <h3>理论 iNAV 公式（全天通用）</h3>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">系统在<strong>任意时刻</strong>都用同一个公式：拿当前 Published iNAV 乘以"自上一笔 KP 印出之后 KT 漂移导致的杠杆修正"。</p>
+                        <pre class="bbg-code">Theo_iNAV(t) = Published_iNAV(t) × (1 + L × r)
+r = KT(t) / KP_ref(t) − 1     L = 2 (本品为 Daily 2x)</pre>
                         <table class="formula-table">
-                            <thead><tr><th>输入</th><th>说明</th><th>数据来源</th></tr></thead>
+                            <thead><tr><th>变量</th><th>含义</th></tr></thead>
                             <tbody>
-                                <tr>
-                                    <td>iNAV</td>
-                                    <td>ETF实时指示性净值（已含2倍杠杆+汇率+费用）</td>
-                                    <td><code>Bloomberg: 7709IV Index</code></td>
-                                </tr>
-                                <tr>
-                                    <td>ETF市价</td>
-                                    <td>港股ETF实际交易价格</td>
-                                    <td><code>Bloomberg: 7709 HK / Yahoo: 7709.HK</code></td>
-                                </tr>
+                                <tr><td>Published</td><td>BBG 发布的 iNAV (<code>7709IV Index</code>)，已隐含 FX/管理费/杠杆复利</td></tr>
+                                <tr><td>KT</td><td>当前 NEXTrade 价 (<code>000660 KT Equity</code>)，08:00–20:00 KST 全天有 tick</td></tr>
+                                <tr><td>KP_ref</td><td>当前最近一笔 KP (<code>000660 KP Equity</code>)；KP 在 14:20 收盘集合竞价后冻结，r 仅由 KT 推动</td></tr>
+                                <tr><td>r</td><td>正股自上次 KRX 印出以来的漂移率，× 2 即得 ETF 应有的修正</td></tr>
                             </tbody>
                         </table>
-                        <table class="formula-table" style="margin-top:0.75rem;">
-                            <thead><tr><th>系统计算</th><th>公式</th></tr></thead>
-                            <tbody>
-                                <tr>
-                                    <td>iNAV涨跌幅</td>
-                                    <td><code>(iNAV当前 - iNAV基准) / iNAV基准 × 100%</code></td>
-                                </tr>
-                                <tr>
-                                    <td>ETF涨跌幅</td>
-                                    <td><code>(ETF当前 - ETF基准) / ETF基准 × 100%</code></td>
-                                </tr>
-                                <tr>
-                                    <td>溢价/折价率</td>
-                                    <td><code>ETF涨跌幅 - iNAV涨跌幅</code></td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        <p class="note" style="margin-top:0.75rem;">
+                            <strong>设计哲学</strong>：不再区分"14:20 前用 truth / 后用 shadow"，因为 Published iNAV 自身就是 ground truth；
+                            14:30 KRX 收盘后 Published 也会冻结，但此时 KP_ref 同步冻结于 14:20 那笔，<code>r = KT/KP_14:20 − 1</code>
+                            正好刻画"KRX 收盘以来的漂移"，模型自然延续。
+                        </p>
                     </div>
                     <div class="guide-card">
-                        <h3>影子 iNAV（系统合成）</h3>
-                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">数据源无法提供 iNAV 时，系统用海力士股价×2+汇率自动合成，可用于验证官方 iNAV</p>
+                        <h3>多重 ETF 参考价（Last / Bid / Ask）</h3>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">单看 Last 价容易高估可执行性。系统对 4 个参考价分别计算偏离，回测按方向选用可成交侧。</p>
                         <table class="formula-table">
-                            <thead><tr><th>输入</th><th>说明</th><th>数据来源</th></tr></thead>
+                            <thead><tr><th>参考价</th><th>premium 公式</th><th>用途</th></tr></thead>
                             <tbody>
-                                <tr>
-                                    <td>海力士股价</td>
-                                    <td>SK海力士正股价格（韩元）</td>
-                                    <td><code>Yahoo: 000660.KS / BBG: 000660 KS</code></td>
-                                </tr>
-                                <tr>
-                                    <td>KRW/HKD汇率</td>
-                                    <td>韩元兑港币汇率</td>
-                                    <td><code>Yahoo: KRWHKD=X / BBG: KRWHKD Curncy</code></td>
-                                </tr>
-                                <tr>
-                                    <td>ETF市价</td>
-                                    <td>港股ETF实际交易价格</td>
-                                    <td><code>Yahoo: 7709.HK / BBG: 7709 HK</code></td>
-                                </tr>
+                                <tr><td>Last</td><td>(Last − Theo) / Theo</td><td>触发判定（visible quote）</td></tr>
+                                <tr><td>Bid</td><td>(Bid − Theo) / Theo</td><td>卖 ETF 时的可执行偏离</td></tr>
+                                <tr><td>Ask</td><td>(Ask − Theo) / Theo</td><td>买 ETF 时的可执行偏离</td></tr>
+                                <tr><td>Mid</td><td>((Bid+Ask)/2 − Theo) / Theo</td><td>中性参考</td></tr>
                             </tbody>
                         </table>
-                        <table class="formula-table" style="margin-top:0.75rem;">
-                            <thead><tr><th>系统计算</th><th>公式</th></tr></thead>
-                            <tbody>
-                                <tr>
-                                    <td>影子iNAV涨跌幅</td>
-                                    <td><code>海力士涨跌幅 × 2 + 汇率变动</code></td>
-                                </tr>
-                                <tr>
-                                    <td>溢价/折价率</td>
-                                    <td><code>ETF涨跌幅 - 影子iNAV涨跌幅</code></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <p class="note" style="margin-top:0.75rem;">注意：影子 iNAV 为近似值，未纳入管理费（每日约0.01%）、杠杆融资成本、每日再平衡损耗、底层合约展期成本。建议同时导入官方 iNAV + 海力士/汇率数据，系统会自动对比两者差异。</p>
+                        <p class="note" style="margin-top:0.75rem;">
+                            <strong>Tick 维度</strong>：7709 HK tick size = 0.005 HKD。
+                            交易明细里给出 <code>spread (ticks) = (Last − Theo) / 0.005</code>，
+                            实盘判断"信号是否大过 1–2 tick 的微结构噪音"非常实用。
+                        </p>
+                        <p class="note" style="margin-top:0.5rem;">
+                            <strong>Bias 标记</strong>：每行的 premium 自动归类为
+                            <span class="bias-tag bias-premium">Premium</span>（>+0.05%）/
+                            <span class="bias-tag bias-discount">Discount</span>（<−0.05%）/
+                            <span class="bias-tag bias-flat">Flat</span>（中间），
+                            便于人眼快速扫描偏向。
+                        </p>
+                        <p class="note" style="margin-top:0.5rem;">
+                            <strong>S₀ 严格基准</strong>：当日早盘 KP 尚未 print 时，KP_ref 默认回退到 KT；如想严格按"前一日 KRX 收盘"计算 r，可在数据导入区填入"前一日 KRX 收盘"。
+                        </p>
                     </div>
                 </div>
             </div>

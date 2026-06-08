@@ -1320,6 +1320,36 @@ header h1 {
 .tag-shadow { background: rgba(202, 138, 4, 0.12);  color: var(--color-warning); border: 1px solid rgba(202, 138, 4, 0.3); }
 .tag-skip   { background: rgba(100, 116, 139, 0.12); color: var(--color-text-muted); border: 1px solid rgba(100, 116, 139, 0.3); }
 
+/* Bias label (premium / discount / flat) — used in the dashboard indicator
+ * card and the indicator-guide section. */
+.bias-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
+    margin-left: 0.35rem;
+    vertical-align: middle;
+}
+.bias-premium  { background: rgba(220, 38, 38, 0.12); color: var(--color-danger);  border: 1px solid rgba(220, 38, 38, 0.3); }
+.bias-discount { background: rgba(37, 99, 235, 0.12); color: var(--color-primary); border: 1px solid rgba(37, 99, 235, 0.3); }
+.bias-flat     { background: rgba(100, 116, 139, 0.12); color: var(--color-text-muted); border: 1px solid rgba(100, 116, 139, 0.3); }
+
+/* Reference-side tag for trade log (Last/Bid/Ask). */
+.ref-tag {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 600;
+    padding: 0.02rem 0.3rem;
+    border-radius: 3px;
+    margin-left: 0.35rem;
+    vertical-align: middle;
+}
+.ref-bid  { background: rgba(220, 38, 38, 0.10); color: var(--color-danger);  border: 1px solid rgba(220, 38, 38, 0.25); }
+.ref-ask  { background: rgba(37, 99, 235, 0.10); color: var(--color-primary); border: 1px solid rgba(37, 99, 235, 0.25); }
+.ref-last { background: rgba(100, 116, 139, 0.10); color: var(--color-text-muted); border: 1px solid rgba(100, 116, 139, 0.25); }
+
 
 
 /* ===== Changelog ===== */

@@ -66,7 +66,10 @@
             <h2>偏离监控看板</h2>
             <div id="dashboard-divergence-indicator" class="divergence-indicator"></div>
             <div class="chart-wrapper" style="margin-bottom:1.25rem;"><canvas id="divergence-chart"></canvas></div>
-            <div class="chart-wrapper" style="margin-bottom:1.25rem;"><canvas id="inav-comparison-chart"></canvas></div>
+            <div class="chart-wrapper" style="margin-bottom:1.25rem; position:relative;">
+                <button id="zoom-toggle" class="zoom-toggle" type="button" aria-pressed="false">放大主板时段</button>
+                <canvas id="inav-comparison-chart"></canvas>
+            </div>
             <div class="dashboard-stats">
                 <div class="dashboard-split">
                     <div class="dashboard-period">
@@ -132,46 +135,136 @@
             <div id="conclusion-text"></div>
         </section>
 
-        <!-- Price Monitor (API-based, collapsible, default closed) -->
+        <!-- Price Monitor — collapsible, default closed.
+             Two sub-panels:
+               (1) Theo Premium 监控：手动粘贴当下的 BBG 数据，立即按图里框架
+                   (Published × (1 + L·r)) 算 4 个参考价 (Last/Bid/Ask/Mid)
+                   的 premium、bias、spread in ticks。
+               (2) 历史模式：原来的 "分钟数据表 + 图表"，留给已导入数据的用户。
+             默认折叠，因为我们当前推荐的主路径是从顶部"数据导入与回测"
+             导入 Excel 而非 API 实时盯盘。 -->
         <section id="price-monitor" class="block">
             <button class="collapse-toggle" aria-expanded="false" aria-controls="monitor-content">
                 <span class="collapse-icon"></span>
-                <span class="collapse-title">实时盯盘 <span class="section-tag tag-live">API</span></span>
-                <span class="collapse-hint">需对接 API 后使用，点击展开</span>
+                <span class="collapse-title">实时盯盘 <span class="section-tag tag-live">Live</span></span>
+                <span class="collapse-hint">手动粘贴 BBG 当下数据 / 看历史导入的分钟图，点击展开</span>
             </button>
             <div id="monitor-content" class="collapsible">
                 <div class="collapsible-inner">
-                    <p class="section-subtitle" style="margin-top:0.75rem;">需对接实时行情 API（如 Yahoo Finance 代理）后使用。输入或导入<strong>当天单日</strong>分钟级行情，观察 ETF 与 iNAV 背离情况。</p>
-                    <div class="monitor-input">
-                        <p class="inline-hint" style="margin-bottom:0.75rem;">第一行数据为计算基准（通常为09:30开盘值），系统按 <code>iNAV × (1 + 海力士涨跌% × 2 + 汇率变动)</code> 自动填充理论 iNAV 列（橙色标识），供与官方对比。</p>
-                        <div class="monitor-table-wrap">
-                            <table id="monitor-table">
+                    <!-- ========== (1) Theo Premium 监控 ========== -->
+                    <div class="monitor-subpanel">
+                        <h3 style="margin-top:0; font-size:0.95rem;">Theo Premium 监控 <span class="section-tag tag-live">手动输入</span></h3>
+                        <p class="section-subtitle">把 Bloomberg Terminal 当前 5 个值（Bid / Ask / Last / KP Last / KT Last + Published iNAV）粘进来，立即按
+                            <code>Theo = Published × (1 + L × (KT/KP_ref − 1))</code> 算出 5 行 reference price 的 premium / discount，跟桌面端 Excel 行情表完全一致。
+                        </p>
+
+                        <div class="theo-mon-grid">
+                            <!-- Block 1: Live Inputs -->
+                            <div class="theo-mon-card">
+                                <h4>1. Bloomberg Live Data <span class="theo-mon-hint">手动粘贴</span></h4>
+                                <table class="theo-mon-table">
+                                    <thead>
+                                        <tr><th>字段</th><th>BBG Ticker</th><th>Live Value</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td>7709 HK iNAV (Published)</td><td><code>7709IV Index</code></td>
+                                            <td><input id="tm-published" type="number" step="any" placeholder="95.805"></td></tr>
+                                        <tr><td>7709 HK Bid</td><td><code>7709 HK Equity</code></td>
+                                            <td><input id="tm-bid" type="number" step="any" placeholder="97.820"></td></tr>
+                                        <tr><td>7709 HK Offer (Ask)</td><td><code>7709 HK Equity</code></td>
+                                            <td><input id="tm-ask" type="number" step="any" placeholder="97.840"></td></tr>
+                                        <tr><td>7709 HK Last</td><td><code>7709 HK Equity</code></td>
+                                            <td><input id="tm-last" type="number" step="any" placeholder="97.920"></td></tr>
+                                        <tr><td>000660 KP Last</td><td><code>000660 KP Equity</code></td>
+                                            <td><input id="tm-kp" type="number" step="any" placeholder="1980000"></td></tr>
+                                        <tr><td>000660 KT Last</td><td><code>000660 KT Equity</code></td>
+                                            <td><input id="tm-kt" type="number" step="any" placeholder="1980000"></td></tr>
+                                    </tbody>
+                                </table>
+                                <div class="theo-mon-actions">
+                                    <button id="tm-clear" class="btn btn-secondary" type="button">清空</button>
+                                    <button id="tm-load-sample" class="btn btn-secondary" type="button">加载示例</button>
+                                </div>
+                            </div>
+
+                            <!-- Block 2: Theo Calc -->
+                            <div class="theo-mon-card">
+                                <h4>2. Theoretical iNAV Calculation</h4>
+                                <table class="theo-mon-table">
+                                    <tbody>
+                                        <tr><td>Leverage factor</td><td><code>L</code></td><td>2.0</td></tr>
+                                        <tr><td>r = KT / KP − 1</td><td id="tm-r-cell" class="num-cell">—</td><td></td></tr>
+                                        <tr><td>1 + L × r</td><td id="tm-mult-cell" class="num-cell">—</td><td></td></tr>
+                                        <tr class="highlight">
+                                            <td colspan="2"><strong>Theoretical iNAV</strong></td>
+                                            <td id="tm-theo-cell" class="num-cell"><strong>—</strong></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <p class="theo-mon-formula">公式：
+                                    <code>Theo = Published × (1 + L × r)</code>，全天通用，不分时段。
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Block 3: Premium / Discount table -->
+                        <h4 style="margin:1rem 0 0.4rem; font-size:0.85rem;">3. Premium / Discount vs Theoretical iNAV</h4>
+                        <div class="theo-mon-table-wrap">
+                            <table class="theo-mon-table theo-mon-result" id="tm-result-table">
                                 <thead>
                                     <tr>
-                                        <th>时间</th>
-                                        <th>iNAV(HKD)<br><span style="font-weight:400;font-size:0.65rem;">官方发布值</span></th>
-                                        <th>理论iNAV<br><span style="font-weight:400;font-size:0.65rem;">系统计算</span></th>
-                                        <th>ETF成交价(HKD)</th>
-                                        <th>海力士股价(KRW)</th>
-                                        <th>KRW/HKD汇率</th>
+                                        <th>Leg</th>
+                                        <th>Reference</th>
+                                        <th>Theo iNAV</th>
+                                        <th>Spread (HKD)</th>
+                                        <th>Premium %</th>
+                                        <th>Bias</th>
+                                        <th>Tick Size</th>
+                                        <th>Spread (ticks)</th>
                                     </tr>
                                 </thead>
-                                <tbody id="monitor-tbody"></tbody>
+                                <tbody id="tm-result-tbody">
+                                    <tr><td colspan="8" class="theo-mon-empty">填入数据后自动计算…</td></tr>
+                                </tbody>
                             </table>
                         </div>
-                        <div class="table-actions">
-                            <button id="mon-add-row" class="btn btn-secondary">+ 添加行</button>
-                            <button id="mon-del-row" class="btn btn-danger">- 删除末行</button>
-                            <button id="mon-import" class="btn btn-secondary">导入 Excel/CSV</button>
-                            <button id="mon-download-tpl" class="btn btn-secondary">下载模板</button>
-                            <input type="file" id="mon-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+                    </div>
+
+                    <!-- ========== (2) 历史模式：分钟级数据 + 图表 ========== -->
+                    <details class="monitor-legacy" id="monitor-legacy">
+                        <summary>历史模式：分钟级数据表 + 图表</summary>
+                        <p class="section-subtitle" style="margin-top:0.75rem;">早期遗留模块。如需通过 API（如 Yahoo Finance 代理）逐分钟拉数据画图，可使用此处。日常套利分析推荐使用顶部「数据导入与回测」。</p>
+                        <div class="monitor-input">
+                            <p class="inline-hint" style="margin-bottom:0.75rem;">第一行数据为计算基准（通常为09:30开盘值），系统按 <code>iNAV × (1 + 海力士涨跌% × 2 + 汇率变动)</code> 自动填充理论 iNAV 列（橙色标识），供与官方对比。</p>
+                            <div class="monitor-table-wrap">
+                                <table id="monitor-table">
+                                    <thead>
+                                        <tr>
+                                            <th>时间</th>
+                                            <th>iNAV(HKD)<br><span style="font-weight:400;font-size:0.65rem;">官方发布值</span></th>
+                                            <th>理论iNAV<br><span style="font-weight:400;font-size:0.65rem;">系统计算</span></th>
+                                            <th>ETF成交价(HKD)</th>
+                                            <th>海力士股价(KRW)</th>
+                                            <th>KRW/HKD汇率</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="monitor-tbody"></tbody>
+                                </table>
+                            </div>
+                            <div class="table-actions">
+                                <button id="mon-add-row" class="btn btn-secondary">+ 添加行</button>
+                                <button id="mon-del-row" class="btn btn-danger">- 删除末行</button>
+                                <button id="mon-import" class="btn btn-secondary">导入 Excel/CSV</button>
+                                <button id="mon-download-tpl" class="btn btn-secondary">下载模板</button>
+                                <input type="file" id="mon-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+                            </div>
                         </div>
-                    </div>
-                    <div id="divergence-indicator" class="divergence-indicator"></div>
-                    <div class="monitor-charts">
-                        <div class="chart-wrapper"><canvas id="chart-price-vs-inav"></canvas></div>
-                        <div class="chart-wrapper"><canvas id="chart-shadow-validation"></canvas></div>
-                    </div>
+                        <div id="divergence-indicator" class="divergence-indicator"></div>
+                        <div class="monitor-charts">
+                            <div class="chart-wrapper"><canvas id="chart-price-vs-inav"></canvas></div>
+                            <div class="chart-wrapper"><canvas id="chart-shadow-validation"></canvas></div>
+                        </div>
+                    </details>
                 </div>
             </div>
         </section>

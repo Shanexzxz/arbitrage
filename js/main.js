@@ -85,7 +85,21 @@ function init() {
         executeBacktest();
     });
 
-    // === Price Monitor Section ===
+    // Zoom toggle for the Theo-vs-Published comparison chart
+    const zoomBtn = document.getElementById('zoom-toggle');
+    if (zoomBtn) {
+        zoomBtn.addEventListener('click', () => {
+            inavZoomEnabled = !inavZoomEnabled;
+            zoomBtn.setAttribute('aria-pressed', inavZoomEnabled ? 'true' : 'false');
+            zoomBtn.textContent = inavZoomEnabled ? '恢复全天视角' : '放大主板时段';
+            if (lastInavComparisonData) renderInavComparisonChart(lastInavComparisonData);
+        });
+    }
+
+    // === Theo Premium Monitor (manual-input live snapshot) ===
+    initTheoMonitor();
+
+    // === Price Monitor Section (legacy minute-level table + charts) ===
     initMonitorTable();
     document.getElementById('mon-add-row').addEventListener('click', () => { addMonitorRow(); updateShadowColumn(); renderMonitorCharts(); });
     document.getElementById('mon-del-row').addEventListener('click', () => { delMonitorRow(); updateShadowColumn(); renderMonitorCharts(); });
@@ -1084,7 +1098,137 @@ function normalizeTime(cell) {
     return String(cell).trim();
 }
 
-// ===== Price Monitor Section =====
+// ===== Theo Premium Monitor =====
+//
+// A live single-snapshot panel that mirrors the desk's Bloomberg Excel layout:
+//
+//   Block 1: Bloomberg Live Data        — 6 user-input fields
+//   Block 2: Theoretical iNAV calc      — Theo = Published × (1 + L × r)
+//   Block 3: Premium / Discount table   — 5 reference legs × 8 columns
+//
+// Implementation philosophy: deliberately decoupled from any API. The user
+// pastes 6 numbers from BBG Terminal once and gets a complete read-out;
+// we don't auto-poll anything. This keeps the surface predictable and avoids
+// reliance on data sources that may not be available in every deployment.
+
+const TM_LEVERAGE = 2;
+const TM_SAMPLE = {
+    published: 95.805,
+    bid: 97.820,
+    ask: 97.840,
+    last: 97.920,
+    kp: 1980000,
+    kt: 1980000,
+};
+
+function initTheoMonitor() {
+    const ids = ['tm-published', 'tm-bid', 'tm-ask', 'tm-last', 'tm-kp', 'tm-kt'];
+    const inputs = ids.map(id => document.getElementById(id));
+    if (inputs.some(el => !el)) return;  // panel HTML missing — fail silent
+
+    inputs.forEach(el => el.addEventListener('input', recalcTheoMonitor));
+
+    document.getElementById('tm-clear')?.addEventListener('click', () => {
+        inputs.forEach(el => { el.value = ''; });
+        recalcTheoMonitor();
+    });
+    document.getElementById('tm-load-sample')?.addEventListener('click', () => {
+        document.getElementById('tm-published').value = TM_SAMPLE.published;
+        document.getElementById('tm-bid').value = TM_SAMPLE.bid;
+        document.getElementById('tm-ask').value = TM_SAMPLE.ask;
+        document.getElementById('tm-last').value = TM_SAMPLE.last;
+        document.getElementById('tm-kp').value = TM_SAMPLE.kp;
+        document.getElementById('tm-kt').value = TM_SAMPLE.kt;
+        recalcTheoMonitor();
+    });
+
+    recalcTheoMonitor();
+}
+
+function recalcTheoMonitor() {
+    const num = id => {
+        const v = parseFloat(document.getElementById(id).value);
+        return isNaN(v) ? null : v;
+    };
+    const published = num('tm-published');
+    const bid = num('tm-bid');
+    const ask = num('tm-ask');
+    const last = num('tm-last');
+    const kp = num('tm-kp');
+    const kt = num('tm-kt');
+    const mid = (bid != null && ask != null) ? (bid + ask) / 2 : null;
+
+    const rCell = document.getElementById('tm-r-cell');
+    const multCell = document.getElementById('tm-mult-cell');
+    const theoCell = document.getElementById('tm-theo-cell');
+    const tbody = document.getElementById('tm-result-tbody');
+
+    // Need Published + KP + KT to compute Theo.
+    if (published == null || kp == null || kt == null || kp <= 0) {
+        rCell.textContent = '—';
+        multCell.textContent = '—';
+        theoCell.innerHTML = '<strong>—</strong>';
+        tbody.innerHTML = '<tr><td colspan="8" class="theo-mon-empty">填入 Published / KP / KT 后自动计算…</td></tr>';
+        return;
+    }
+
+    const r = kt / kp - 1;
+    const mult = 1 + TM_LEVERAGE * r;
+    const theo = published * mult;
+
+    rCell.textContent = (r * 100).toFixed(4) + '%';
+    multCell.textContent = mult.toFixed(6);
+    theoCell.innerHTML = `<strong>${theo.toFixed(4)}</strong> HKD`;
+
+    // Build the 5-row premium table. Each row reports Spread, Premium %,
+    // Bias, Tick Size, Spread (in ticks). We render rows even when a leg's
+    // input is missing — those rows just show "—" placeholders.
+    const TICK = 0.005;
+    const legs = [
+        { label: 'Last',           value: last },
+        { label: 'Bid',            value: bid },
+        { label: 'Ask',            value: ask },
+        { label: 'Mid',            value: mid, hint: '(Bid + Ask) / 2' },
+        { label: 'Published iNAV', value: published, hint: '与 Theo 的差 = 杠杆漂移项' },
+    ];
+
+    const rowsHtml = legs.map(leg => {
+        if (leg.value == null) {
+            return `<tr>
+                <td>${leg.label}${leg.hint ? `<span class="theo-mon-hint"> · ${leg.hint}</span>` : ''}</td>
+                <td>—</td><td>${theo.toFixed(4)}</td><td>—</td><td>—</td><td>—</td>
+                <td>${TICK.toFixed(3)}</td><td>—</td>
+            </tr>`;
+        }
+        const spread = leg.value - theo;
+        const premPct = spread / theo * 100;
+        const ticks = spread / TICK;
+        const bias = premPct >  0.05 ? 'premium'
+                   : premPct < -0.05 ? 'discount'
+                   :                   'flat';
+        const biasTag = bias === 'premium'  ? '<span class="bias-tag bias-premium">Premium</span>'
+                      : bias === 'discount' ? '<span class="bias-tag bias-discount">Discount</span>'
+                      :                       '<span class="bias-tag bias-flat">Flat</span>';
+        const sign = v => (v >= 0 ? '+' : '') + v;
+        const premColor = premPct >  0.05 ? '#dc2626'
+                        : premPct < -0.05 ? '#2563eb'
+                        :                   '#64748b';
+        return `<tr>
+            <td>${leg.label}${leg.hint ? `<span class="theo-mon-hint"> · ${leg.hint}</span>` : ''}</td>
+            <td>${leg.value.toFixed(3)}</td>
+            <td>${theo.toFixed(4)}</td>
+            <td style="color:${premColor}">${sign(spread.toFixed(3))}</td>
+            <td style="color:${premColor}; font-weight:600">${sign(premPct.toFixed(3))}%</td>
+            <td>${biasTag}</td>
+            <td>${TICK.toFixed(3)}</td>
+            <td style="color:${premColor}">${sign(ticks.toFixed(1))}</td>
+        </tr>`;
+    }).join('');
+
+    tbody.innerHTML = rowsHtml;
+}
+
+// ===== Price Monitor Section (legacy minute-level table + charts) =====
 
 const MONITOR_DEMO_ROWS = [
     { time: '09:30', inav: '93.8025', etf: '93.62' },
@@ -1786,15 +1930,26 @@ function renderDivergenceChart(data, threshold) {
 }
 
 let inavComparisonChart = null;
+// "Zoom" toggle for the morning-session detail view. When true, the chart's
+// Y axis auto-scales to median ± 3·stdev of (Published, Theo) across the day,
+// so the small pre-14:20 dispersion (typically ~0.1 HKD ≈ 20 ticks driven by
+// KT/KP micro-spread) becomes visually obvious instead of being collapsed
+// into a single visual line by the much larger afternoon move.
+let inavZoomEnabled = false;
+let lastInavComparisonData = null;
 
 /**
  * Render chart showing official iNAV and theoretical iNAV actual HKD values over the full day.
  * Visually demonstrates that the official Published value freezes after 14:30
  * KRX close while the theoretical (KT-driven) value keeps tracking reality.
+ *
+ * `zoom` mode (toggled by the in-chart button) tightens the Y-axis so the
+ * tiny morning-session theoretical-vs-published dispersion is visible.
  */
 function renderInavComparisonChart(data) {
     const canvas = document.getElementById('inav-comparison-chart');
     if (!canvas) return;
+    lastInavComparisonData = data;
     const ctx = canvas.getContext('2d');
     if (inavComparisonChart) inavComparisonChart.destroy();
 
@@ -1827,6 +1982,29 @@ function renderInavComparisonChart(data) {
     // Find 14:20 cutoff
     const cutoffIdx = validRows.findIndex(r => r.time && r.time > '14:20');
 
+    // Zoom-mode Y range: focus on the morning-session segment so the small
+    // Theo-vs-Published dispersion (typically ~0.1 HKD ≈ 20 ticks) is visible.
+    // Use median ± 3·MAD over the morning rows only (more robust than stdev
+    // on multi-day data with regime shifts).
+    let zoomY = null;
+    if (inavZoomEnabled) {
+        const morningRows = cutoffIdx > 0 ? validRows.slice(0, cutoffIdx) : validRows;
+        const morningVals = [];
+        for (let i = 0; i < morningRows.length; i++) {
+            if (officialLine[i] != null) morningVals.push(officialLine[i]);
+            if (shadowLine[i] != null) morningVals.push(shadowLine[i]);
+        }
+        if (morningVals.length > 4) {
+            const sorted = [...morningVals].sort((a, b) => a - b);
+            const median = sorted[Math.floor(sorted.length / 2)];
+            const absDev = morningVals.map(v => Math.abs(v - median)).sort((a, b) => a - b);
+            const mad = absDev[Math.floor(absDev.length / 2)] || 0.05;
+            // Pad by max(6×MAD, 0.5 HKD) so the band is never invisibly narrow.
+            const pad = Math.max(6 * mad, 0.5);
+            zoomY = { min: median - pad, max: median + pad };
+        }
+    }
+
     inavComparisonChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -1857,19 +2035,27 @@ function renderInavComparisonChart(data) {
             responsive: true,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                title: { display: true, text: '官方 iNAV vs 理论 iNAV（HKD 价格对比）' },
+                title: {
+                    display: true,
+                    text: inavZoomEnabled
+                        ? '官方 iNAV vs 理论 iNAV（HKD 价格对比） · 主板时段放大'
+                        : '官方 iNAV vs 理论 iNAV（HKD 价格对比）'
+                },
                 legend: { labels: { usePointStyle: true, pointStyle: 'line' } },
                 tooltip: {
                     callbacks: {
                         label: (ctx) => {
                             const val = ctx.parsed.y;
-                            return `${ctx.dataset.label}: ${val != null ? val.toFixed(2) : '-'}`;
+                            return `${ctx.dataset.label}: ${val != null ? val.toFixed(3) : '-'}`;
                         }
                     }
                 },
             },
             scales: {
-                y: { title: { display: true, text: '价格 (HKD)' } },
+                y: {
+                    title: { display: true, text: '价格 (HKD)' },
+                    ...(zoomY ? { min: zoomY.min, max: zoomY.max } : {}),
+                },
             },
         },
         plugins: [{

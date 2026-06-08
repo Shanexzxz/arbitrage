@@ -182,6 +182,162 @@ header h1 {
     margin-bottom: 1.5rem;
 }
 
+/* ===== Theo Premium Monitor (Bloomberg Excel-style live snapshot) ===== */
+.monitor-subpanel {
+    margin-bottom: 1.5rem;
+}
+
+.theo-mon-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+@media (max-width: 880px) {
+    .theo-mon-grid { grid-template-columns: 1fr; }
+}
+
+.theo-mon-card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 0.85rem 1rem;
+    background: #fafbfc;
+}
+.theo-mon-card h4 {
+    margin: 0 0 0.6rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 0.35rem;
+}
+.theo-mon-hint {
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+    font-weight: 400;
+    margin-left: 0.4rem;
+}
+
+.theo-mon-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+.theo-mon-table th,
+.theo-mon-table td {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+    vertical-align: middle;
+}
+.theo-mon-table th {
+    background: #f1f5f9;
+    font-weight: 600;
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+}
+.theo-mon-table td code {
+    background: #eef2f7;
+    color: #475569;
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.72rem;
+}
+.theo-mon-table input[type="number"] {
+    width: 100%;
+    border: 1px solid var(--color-border);
+    border-radius: 5px;
+    padding: 0.25rem 0.45rem;
+    font-size: 0.78rem;
+    text-align: right;
+}
+.theo-mon-table input[type="number"]:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+.theo-mon-table .num-cell {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--color-text);
+}
+.theo-mon-table tr.highlight {
+    background: #fef9c3;
+}
+.theo-mon-table tr.highlight td {
+    border-bottom: none;
+}
+
+.theo-mon-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+}
+
+.theo-mon-formula {
+    margin: 0.6rem 0 0;
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+}
+.theo-mon-formula code {
+    background: #eef2f7;
+    color: #1e293b;
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.72rem;
+}
+
+.theo-mon-table-wrap {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow-x: auto;
+    background: #fafbfc;
+}
+.theo-mon-result {
+    font-size: 0.8rem;
+}
+.theo-mon-result th {
+    background: linear-gradient(180deg, #1e3a5f 0%, #2563eb 100%);
+    color: #fff;
+    font-weight: 600;
+    text-align: center;
+    padding: 0.45rem 0.5rem;
+}
+.theo-mon-result td {
+    text-align: center;
+}
+.theo-mon-result td:first-child {
+    text-align: left;
+    font-weight: 500;
+}
+.theo-mon-empty {
+    color: var(--color-text-muted);
+    text-align: center !important;
+    padding: 1rem !important;
+    font-style: italic;
+}
+
+/* Legacy "minute-level" subsection inside Price Monitor — collapsed by default. */
+.monitor-legacy {
+    margin-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+    padding-top: 1rem;
+}
+.monitor-legacy > summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    padding: 0.4rem 0;
+    user-select: none;
+}
+.monitor-legacy > summary:hover {
+    color: var(--color-primary);
+}
+.monitor-legacy[open] > summary {
+    color: var(--color-text);
+    margin-bottom: 0.5rem;
+}
+
 .monitor-baseline {
     display: flex;
     gap: 0.75rem;
@@ -953,6 +1109,32 @@ header h1 {
 
 .chart-wrapper:first-child {
     grid-column: 1 / -1;
+}
+
+/* In-chart toggle button (e.g. zoom mode for the Theo vs Published chart). */
+.zoom-toggle {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.8rem;
+    z-index: 5;
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 0.25rem 0.6rem;
+    background: var(--color-card);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.zoom-toggle:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+.zoom-toggle[aria-pressed="true"] {
+    color: #fff;
+    background: var(--color-primary);
+    border-color: var(--color-primary);
 }
 
 /* ===== Trade Log ===== */

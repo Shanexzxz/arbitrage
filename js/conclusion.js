@@ -1,92 +1,114 @@
 // js/conclusion.js
 
 /**
- * Generate feasibility conclusion from statistics.
+ * Generate a feasibility conclusion for the position-swap arbitrage strategy.
  *
- * @param {Object} stats - from calculateStatistics
+ * Unlike statistical strategies (which need win-rate / drawdown / sharpe),
+ * a swap strategy that locks in profit at trigger time only needs to answer:
+ *
+ *   1. Are there enough opportunities to make this worthwhile?
+ *      → frequency-per-day
+ *
+ *   2. Is the average opportunity big enough to comfortably cover swap cost?
+ *      → margin = (avgGross − swapCost) / swapCost
+ *
+ * @param {Object} stats   from calculateStatistics — uses totalTrades + avgWin
+ * @param {Object} extra   { dayCount, swapCost }
  * @returns {Object} { light, verdict, risks, suggestion }
  */
-export function generateConclusion(stats) {
-    const { sharpeRatio, winRate, maxDrawdown, totalReturn, totalTrades, profitLossRatio } = stats;
+export function generateConclusion(stats, extra = {}) {
+    const { totalTrades, totalReturn, avgWin } = stats;
+    const dayCount = Math.max(1, extra.dayCount || 1);
+    const swapCost = extra.swapCost != null ? extra.swapCost : 0;
 
     if (totalTrades === 0) {
         return {
             light: 'red',
-            verdict: '无交易信号触发。当前参数下无套利机会，建议降低开仓阈值或检查数据覆盖时段。',
-            risks: ['数据量不足或阈值过高'],
-            suggestion: '尝试将开仓阈值降低 0.5% 重新回测。',
+            verdict: '当前数据 / 阈值组合下未触发任何换仓机会，策略无法运转。',
+            risks: ['无可吃的偏离 — 阈值过高或市场处于平静期'],
+            suggestion: '尝试降低背离阈值（例如 1.5%）或扩大回测时间范围以验证机会密度。',
         };
     }
 
-    // Determine traffic light
-    const light = determineLight(sharpeRatio, winRate, maxDrawdown);
+    // Locked-in metrics (per swap, in %)
+    const avgNet = avgWin;                            // already net of swapCost
+    const avgGross = avgNet + swapCost;               // |premium| at trigger
+    const freqPerDay = totalTrades / dayCount;
+    const marginRatio = swapCost > 0 ? avgNet / swapCost : Infinity;
 
-    // Generate verdict
-    const verdict = generateVerdict(light, stats);
-
-    // Identify risks
-    const risks = identifyRisks(stats);
-
-    // Generate suggestion
-    const suggestion = generateSuggestion(light, stats);
+    const light = determineLight(freqPerDay, marginRatio, avgNet);
+    const verdict = generateVerdict(light, {
+        totalTrades, totalReturn, dayCount, freqPerDay,
+        avgGross, avgNet, marginRatio, swapCost,
+    });
+    const risks = identifyRisks({ freqPerDay, avgNet, marginRatio, totalTrades, dayCount });
+    const suggestion = generateSuggestion(light, { freqPerDay, marginRatio, avgNet });
 
     return { light, verdict, risks, suggestion };
 }
 
-function determineLight(sharpeRatio, winRate, maxDrawdown) {
-    // Red conditions (any one triggers)
-    if (sharpeRatio < 0.5 || maxDrawdown > 20) {
-        return 'red';
-    }
-    // Green conditions (all must be met)
-    if (sharpeRatio > 1.5 && winRate > 60 && maxDrawdown < 10) {
-        return 'green';
-    }
-    // Otherwise yellow
+function determineLight(freqPerDay, marginRatio, avgNet) {
+    // 红：根本不赚钱（净利 ≤ 0）
+    if (avgNet <= 0) return 'red';
+    // 绿：每天 ≥ 1 次机会 且 净利至少等于成本本身（marginRatio ≥ 1）
+    if (freqPerDay >= 1 && marginRatio >= 1) return 'green';
     return 'yellow';
 }
 
-function generateVerdict(light, stats) {
-    const { totalReturn, totalTrades, winRate, sharpeRatio, maxDrawdown } = stats;
+function generateVerdict(light, m) {
+    const head = `共 ${m.totalTrades} 次换仓，覆盖 ${m.dayCount} 天（约每天 ${m.freqPerDay.toFixed(1)} 次）。`
+        + ` 平均触发偏离 ${m.avgGross.toFixed(2)}%，扣 ${m.swapCost.toFixed(2)}% 换仓成本后，单笔平均锁定 ${m.avgNet.toFixed(2)}%；`
+        + ` 累计 ${m.totalReturn.toFixed(2)}%。`;
 
     if (light === 'green') {
-        return `策略可行。共 ${totalTrades} 笔交易，胜率 ${winRate.toFixed(1)}%，累计收益 ${totalReturn.toFixed(2)}%，夏普比率 ${sharpeRatio.toFixed(2)}，最大回撤 ${maxDrawdown.toFixed(2)}%。策略表现优异，建议实盘验证。`;
+        return `策略可行。${head}` +
+            ` 安全边际 ${m.marginRatio.toFixed(1)}× 成本，机会密度健康，建议小仓位实盘验证滑点与执行延迟。`;
     }
     if (light === 'yellow') {
-        return `策略需谨慎评估。共 ${totalTrades} 笔交易，胜率 ${winRate.toFixed(1)}%，累计收益 ${totalReturn.toFixed(2)}%，夏普比率 ${sharpeRatio.toFixed(2)}，最大回撤 ${maxDrawdown.toFixed(2)}%。策略有盈利潜力但风险收益比一般，建议优化参数后再评估。`;
+        if (m.freqPerDay < 1) {
+            return `策略勉强可行。${head}` +
+                ` 平均每天换仓 < 1 次，机会偏稀；可考虑略降阈值或扩大数据窗口以判断稳定性。`;
+        }
+        return `策略勉强可行。${head}` +
+            ` 安全边际仅 ${m.marginRatio.toFixed(1)}× 成本，单点滑点 / 执行延迟可能侵蚀利润。`;
     }
-    return `不建议执行该策略。共 ${totalTrades} 笔交易，胜率 ${winRate.toFixed(1)}%，累计收益 ${totalReturn.toFixed(2)}%，夏普比率 ${sharpeRatio.toFixed(2)}，最大回撤 ${maxDrawdown.toFixed(2)}%。当前参数下策略风险过高或收益不足。`;
+    return `不建议执行。${head}` +
+        ` 平均锁定收益 ≤ 0，说明换仓成本未被偏离覆盖，应提高阈值或寻找更高波动期数据。`;
 }
 
-function identifyRisks(stats) {
+function identifyRisks(m) {
     const risks = [];
-    const { maxDrawdown, winRate, totalTrades, profitLossRatio, sharpeRatio } = stats;
 
-    if (maxDrawdown > 15) risks.push(`最大回撤达 ${maxDrawdown.toFixed(1)}%，资金风险较高`);
-    if (maxDrawdown > 10 && maxDrawdown <= 15) risks.push(`最大回撤 ${maxDrawdown.toFixed(1)}%，需注意仓位控制`);
-    if (winRate < 50) risks.push(`胜率仅 ${winRate.toFixed(1)}%，低于50%，需靠大盈利覆盖频繁小亏损`);
-    if (totalTrades < 5) risks.push('交易样本过少，统计结果不够可靠');
-    if (profitLossRatio < 1) risks.push('盈亏比 < 1，平均亏损大于平均盈利');
-    if (sharpeRatio < 1) risks.push('夏普比率偏低（<1），单笔收益波动大');
+    if (m.totalTrades < 5) {
+        risks.push(`样本仅 ${m.totalTrades} 笔，结论的统计置信度有限`);
+    }
+    if (m.dayCount < 3) {
+        risks.push('回测覆盖天数 < 3，单日行情不能代表常态');
+    }
+    if (m.freqPerDay < 1) {
+        risks.push(`日均换仓 ${m.freqPerDay.toFixed(2)} 次，机会密度偏稀，资金利用率低`);
+    }
+    if (m.marginRatio < 1) {
+        risks.push(`平均净利 ${m.avgNet.toFixed(2)}% 仅相当于 ${m.marginRatio.toFixed(1)}× 成本，对滑点敏感`);
+    }
 
-    // Always mention structural risks
-    risks.push('杠杆ETF存在每日复利衰减，长期持仓需注意');
-    risks.push('跨市场执行存在时间差和汇率波动风险');
+    // Always-relevant structural risks
+    risks.push('换仓的两条腿（ETF 与 Hynix）必须接近同时成交，跨市场执行延迟会侵蚀价差');
+    risks.push('回测用每分钟首笔快照价；实盘成交价可能差几个基点（滑点）');
+    risks.push('策略假设 Hynix 底仓充足，且每笔换仓不超过底仓上限（本工具不强制校验）');
 
     return risks;
 }
 
-function generateSuggestion(light, stats) {
-    const { winRate, maxDrawdown, totalTrades } = stats;
-
+function generateSuggestion(light, m) {
     if (light === 'green') {
-        return '建议以小仓位实盘验证1-2周，确认滑点和执行延迟对策略的实际影响。';
+        return '建议以小仓位实盘 1–2 周，重点观察实际成交价与回测快照价的偏差，校准 swapCost 参数。';
     }
     if (light === 'yellow') {
-        if (maxDrawdown > 10) return '建议提高开仓阈值以减少回撤，或缩小单笔仓位。';
-        if (winRate < 55) return '建议调整平仓阈值，尝试更宽松的止盈条件提升胜率。';
-        return '建议微调参数并增加回测数据量以验证稳定性。';
+        if (m.freqPerDay < 1) {
+            return '机会过稀。可适当降低背离阈值 0.3~0.5 个百分点，或扩大回测窗口到 ≥ 5 天再判断。';
+        }
+        return '安全边际偏窄。可提高阈值（如 +0.5%）以筛掉边缘信号，或确认实际换仓成本是否更低。';
     }
-    if (totalTrades < 3) return '数据样本不足，建议扩大回测时间范围。';
-    return '当前参数组合不适合实盘，建议重新评估策略假设或更换阈值。';
+    return '当前参数下没有套利空间。建议提高阈值以筛出更显著的偏离机会，或检查 swapCost 输入是否高估。';
 }

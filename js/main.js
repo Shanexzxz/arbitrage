@@ -246,9 +246,14 @@ function executeBacktest() {
     renderByDate(swaps, analysis);
     renderTradeLog(swaps);
 
-    // Generate and show conclusion
+    // Generate and show conclusion. The conclusion engine needs dayCount and
+    // swapCost on top of the per-trade pnl list to compute frequency-per-day
+    // and the safety margin vs. swap cost.
     const stats = calculateStatistics(swaps.map(t => ({ pnl: t.netProfit })));
-    const conclusion = generateConclusion(stats);
+    const conclusion = generateConclusion(stats, {
+        dayCount,
+        swapCost: params.swapCost,
+    });
     renderConclusion(conclusion);
 }
 
@@ -410,10 +415,14 @@ function renderConclusion(conclusion) {
 
         <h3 style="margin-top:1rem;">指标说明</h3>
         <div class="conclusion-metrics-note">
-            <p><strong>夏普比率</strong> = 每笔交易平均收益率 ÷ 收益率标准差（未年化，无风险利率=0）</p>
-            <p style="color:var(--color-text-muted); font-size:0.8rem;">衡量每承担一单位波动能获得多少收益。&gt;1.5 优秀，1~1.5 良好，0.5~1 一般，&lt;0.5 较差。</p>
-            <p><strong>最大回撤</strong> = 累计收益从最高点到最低点的最大跌幅</p>
-            <p><strong>胜率</strong> = 盈利交易次数 ÷ 总交易次数 × 100%</p>
+            <p><strong>触发频率（次/天）</strong> = 换仓总数 / 覆盖天数；衡量套利机会密度。健康范围 ≥ 1。</p>
+            <p><strong>平均锁定收益</strong> = 每笔换仓在扣除 swap_cost 后锁定的净利率（%）。</p>
+            <p><strong>安全边际倍数</strong> = 平均锁定收益 / 单笔换仓成本。
+                ≥ 1× 意味着即使滑点把成本翻倍仍能盈利。</p>
+            <p style="color:var(--color-text-muted); font-size:0.8rem; margin-top:0.5rem;">
+                注：本策略采用『偏离触发即锁定』模型（delta 中性，无平仓），传统的<strong>胜率 / 最大回撤 / 盈亏比 / 夏普比率</strong>
+                在此场景下退化（胜率 ≈ 100%，回撤 ≈ 0），故已移除。
+            </p>
         </div>
     `;
 }

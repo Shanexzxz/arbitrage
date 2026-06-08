@@ -1176,19 +1176,31 @@ header h1 {
 .charts-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1.25rem;
-    margin-bottom: 2rem;
+    gap: 0.85rem;
+    margin-bottom: 1.5rem;
 }
 
 .chart-wrapper {
+    position: relative;            /* required for maintainAspectRatio: false */
     border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 1.25rem;
+    border-radius: 8px;
+    padding: 0.75rem 0.85rem 0.6rem;
     background: #fafbfc;
 }
 
-.chart-wrapper:first-child {
+/* The first chart (累计收益曲线) spans the full width. With Chart.js's
+ * default 2:1 aspect ratio it would be roughly twice as tall as its
+ * half-width siblings, which crushes the rest of the backtest-results page.
+ *
+ * We disable maintainAspectRatio in JS and constrain the wrapper height
+ * here, so the cumulative-return chart becomes wide-but-short while the
+ * other two charts stay at a comfortable size. */
+#backtest-results .charts-container > .chart-wrapper:first-child {
     grid-column: 1 / -1;
+    height: 200px;
+}
+#backtest-results .charts-container > .chart-wrapper:not(:first-child) {
+    height: 260px;
 }
 
 /* In-chart toggle button (e.g. zoom mode for the Theo vs Published chart). */

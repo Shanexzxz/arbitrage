@@ -88,6 +88,7 @@ function renderEquityChart(data, trades) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 title: { display: true, text: '累计收益曲线' },
@@ -158,6 +159,7 @@ function renderPremiumChart(data, trades) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: { title: { display: true, text: '溢价/折价率走势' }, legend: { labels: { usePointStyle: true, pointStyle: 'line' } } },
             scales: {
                 y: { title: { display: true, text: '溢价率 (%)' } },
@@ -220,6 +222,7 @@ function renderPnlHistogram(trades) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: { title: { display: true, text: '单笔盈亏分布' }, legend: { labels: { usePointStyle: true, pointStyle: 'line' } } },
             scales: {
                 x: { ticks: { maxRotation: 0 } },

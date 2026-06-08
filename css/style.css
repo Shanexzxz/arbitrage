@@ -757,19 +757,13 @@ header h1 {
     background: #dbeafe;
 }
 
+/* Computed/read-only column (理论 iNAV). Class name kept for backward compat
+ * with existing JS / templates; semantically this now flags the theoretical
+ * iNAV column. */
 #data-table-container input.shadow-cell {
     background: #fef3c7;
     color: #92400e;
     font-weight: 500;
-}
-
-/* "Pre-cutoff" shadow iNAV (before 14:20): synthetic diagnostic only,
- * not used by the backtest engine. Render in much softer tones so it
- * visually recedes vs. the relay-mode shadow values after 14:20. */
-#data-table-container input.shadow-cell.shadow-cell-pre {
-    background: #f8fafc;
-    color: #cbd5e1;
-    font-weight: 400;
 }
 
 /* "Main board closed" placeholder cell — KP after 14:30 */

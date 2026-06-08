@@ -449,13 +449,18 @@ function renderConclusion(conclusion) {
     `;
 }
 
-// ===== Shadow iNAV Validation =====
+// ===== Theoretical iNAV Validation (currently dead code, kept for reference) =====
 
 let shadowBacktestChart = null;
 
 /**
- * Render shadow iNAV vs official iNAV comparison.
- * Only shows when data rows have both inavSource='truth' AND shadowInavChange != null.
+ * Render the locally-computed theoretical iNAV vs the official Published
+ * iNAV. Helps the user verify the formula reproduces Published values closely
+ * during the morning session (when r ≈ 0).
+ *
+ * NOTE: not currently invoked from executeBacktest — left in place because the
+ * dashboard charts (renderInavComparisonChart / renderInavValidationChart)
+ * already cover the same diagnostic.
  */
 function renderShadowValidation(data) {
     const section = document.getElementById('shadow-validation-section');
@@ -489,7 +494,7 @@ function renderShadowValidation(data) {
         <div class="stat-card">
             <div class="value">${avgError.toFixed(4)}%</div>
             <div class="label">平均绝对误差</div>
-            <div class="stat-hint">影子iNAV涨跌幅与官方iNAV涨跌幅的平均偏差</div>
+            <div class="stat-hint">理论 iNAV 涨跌幅与官方 iNAV 涨跌幅的平均偏差</div>
         </div>
         <div class="stat-card">
             <div class="value">${maxError.toFixed(4)}%</div>
@@ -527,7 +532,7 @@ function renderShadowValidation(data) {
                     fill: false,
                 },
                 {
-                    label: '影子 iNAV 涨跌幅 (%)',
+                    label: '理论 iNAV 涨跌幅 (%)',
                     data: shadowLine,
                     borderColor: '#f59e0b',
                     borderWidth: 2,
@@ -550,7 +555,7 @@ function renderShadowValidation(data) {
         options: {
             responsive: true,
             plugins: {
-                title: { display: true, text: '影子 iNAV vs 官方 iNAV（涨跌幅对比）' },
+                title: { display: true, text: '理论 iNAV vs 官方 iNAV（涨跌幅对比）' },
                 legend: { labels: { usePointStyle: true, pointStyle: 'line' } },
             },
             scales: {
@@ -618,7 +623,7 @@ function downloadBacktestTemplate() {
  *
  * - Multi-day is fully supported (engine groups by date and computes per-day baselines).
  * - Empty 日期 rows are bucketed into a synthetic single-day group.
- * - Empty iNAV cells are normal: parseData() falls back to shadow iNAV per row.
+ * - Empty iNAV cells are normal: rows missing Published iNAV simply skip.
  * - Backward-compatible with the legacy 5-column "no-iNAV" template
  *   (日期 | 时间 | 海力士 | 汇率 | ETF) — detected by the header row.
  */
@@ -901,7 +906,7 @@ function parseBBGBacktestData(rows) {
         'success'
     );
 
-    // Recompute shadow iNAV column + dashboard charts now that the table is filled
+    // Recompute 理论 iNAV column + dashboard charts now that the table is filled
     updateBacktestShadowColumn();
     refreshDashboard();
 }
@@ -1180,7 +1185,9 @@ function delMonitorRow() {
 }
 
 /**
- * Recalculate shadow iNAV for all rows based on first row as baseline.
+ * Recalculate the theoretical iNAV column (legacy "shadow" name kept in
+ * function/CSS-class identifiers for backward compat) for all rows based on
+ * the first row as baseline.
  * Called on every input change — no button needed.
  */
 function updateShadowColumn() {
@@ -1234,9 +1241,10 @@ function updateDivergenceIndicator(etf, officialInav, shadowInav, time) {
         return;
     }
 
-    // Always prefer official iNAV (available all day from BBG)
+    // Prefer official iNAV when present; otherwise fall back to the locally-
+    // computed theoretical iNAV (Hynix×2 + FX, baseline-relative).
     const referenceInav = officialInav || shadowInav;
-    const inavSource = officialInav ? '官方iNAV' : '影子iNAV';
+    const inavSource = officialInav ? '官方 iNAV' : '理论 iNAV';
 
     // Calculate divergence
     const divergence = ((etf - referenceInav) / referenceInav * 100);
@@ -1283,7 +1291,7 @@ function updateDivergenceIndicator(etf, officialInav, shadowInav, time) {
 }
 
 function downloadMonitorTemplate() {
-    const header = ['时间', 'iNAV(HKD)', '影子iNAV(系统计算)', 'ETF成交价(HKD)', '海力士股价(KRW)', 'KRW/HKD汇率'];
+    const header = ['时间', 'iNAV(HKD)', '理论iNAV(系统计算)', 'ETF成交价(HKD)', '海力士股价(KRW)', 'KRW/HKD汇率'];
     const sampleRows = [
         ['09:30', '90.50', '', '90.55', '200500', '0.0058'],
         ['09:45', '90.80', '', '90.85', '201000', '0.0058'],
@@ -1317,7 +1325,7 @@ function importMonitorFile(file) {
                 return;
             }
 
-            // Fill table - columns: 时间, iNAV, (影子iNAV跳过), ETF, 海力士, KRW/HKD
+            // Fill table - columns: 时间, iNAV, (理论iNAV跳过), ETF, 海力士, KRW/HKD
             const tbody = document.getElementById('monitor-tbody');
             tbody.innerHTML = dataRows.map(row => {
                 const time = String(row[0] || '').trim();
@@ -1371,7 +1379,7 @@ function renderMonitorCharts() {
 
     if (!baseInav) return; // At minimum need iNAV baseline
 
-    // Calculate shadow iNAV for all rows (only when Hynix + FX available)
+    // Compute theoretical iNAV for all rows (only when Hynix + FX available)
     const labels = data.map(d => d.time);
     const officialInav = [];
     const etfPrices = [];
@@ -1430,7 +1438,7 @@ function renderMonitorCharts() {
         },
     });
 
-    // Chart 2: Shadow iNAV vs Official iNAV (full day validation)
+    // Chart 2: Theoretical iNAV vs Official iNAV (full day validation)
     // Only render when Hynix + FX data available for shadow calculation
     const canvas2 = document.getElementById('chart-shadow-validation');
     const ctx2 = canvas2.getContext('2d');
@@ -1472,7 +1480,7 @@ function renderMonitorCharts() {
                     fill: false,
                 },
                 {
-                    label: '影子 iNAV (HKD)',
+                    label: '理论 iNAV (HKD)',
                     data: shadowLine,
                     borderColor: '#f59e0b',
                     borderWidth: 2,
@@ -1495,7 +1503,7 @@ function renderMonitorCharts() {
         options: {
             responsive: true,
             plugins: {
-                title: { display: true, text: '影子iNAV校验（全天对比官方）' },
+                title: { display: true, text: '理论 iNAV 校验（全天对比官方）' },
                 legend: {
                     labels: {
                         usePointStyle: true,
@@ -1780,8 +1788,9 @@ function renderDivergenceChart(data, threshold) {
 let inavComparisonChart = null;
 
 /**
- * Render chart showing official iNAV and shadow iNAV actual HKD values over the full day.
- * Visually demonstrates that official iNAV freezes after 14:20 while shadow (KT-based) continues.
+ * Render chart showing official iNAV and theoretical iNAV actual HKD values over the full day.
+ * Visually demonstrates that the official Published value freezes after 14:30
+ * KRX close while the theoretical (KT-driven) value keeps tracking reality.
  */
 function renderInavComparisonChart(data) {
     const canvas = document.getElementById('inav-comparison-chart');
@@ -1789,10 +1798,12 @@ function renderInavComparisonChart(data) {
     const ctx = canvas.getContext('2d');
     if (inavComparisonChart) inavComparisonChart.destroy();
 
-    // We need rows that have both official iNAV and shadow iNAV data
+    // We need rows that have both official iNAV and theoretical iNAV data.
     // Official iNAV price = row.inavPrice
-    // Shadow iNAV price = baseInav * (1 + shadowInavChange/100)
-    // We can reconstruct shadow price from the first row's iNAV + shadowInavChange
+    // Theoretical price = baseInav × (1 + shadowInavChange/100)
+    //   (the `shadowInavChange` field name is kept for backward compatibility
+    //    with downstream chart code; semantically it's the locally-computed
+    //    Hynix-driven iNAV change vs the day baseline.)
     const baseInav = data.length > 0 ? data[0].inavPrice : null;
     if (!baseInav) {
         canvas.parentElement.style.display = 'none';
@@ -1831,7 +1842,7 @@ function renderInavComparisonChart(data) {
                     fill: false,
                 },
                 {
-                    label: '影子 iNAV (HKD)',
+                    label: '理论 iNAV (HKD)',
                     data: shadowLine,
                     borderColor: '#f59e0b',
                     borderWidth: 2,
@@ -1846,7 +1857,7 @@ function renderInavComparisonChart(data) {
             responsive: true,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                title: { display: true, text: '官方 iNAV vs 影子 iNAV（HKD 价格对比）' },
+                title: { display: true, text: '官方 iNAV vs 理论 iNAV（HKD 价格对比）' },
                 legend: { labels: { usePointStyle: true, pointStyle: 'line' } },
                 tooltip: {
                     callbacks: {
@@ -1887,8 +1898,9 @@ function renderInavComparisonChart(data) {
 let inavValidationChart = null;
 
 /**
- * Render chart comparing official iNAV vs shadow iNAV deviation over time.
- * Shows how the official iNAV diverges from reality (KT-based shadow) after 14:20.
+ * Render chart comparing official iNAV vs the locally-recomputed theoretical
+ * iNAV deviation over time. Shows how the official iNAV diverges from reality
+ * (KT-based theoretical) — most visible after 14:20 when KP freezes.
  */
 function renderInavValidationChart(data) {
     const canvas = document.getElementById('inav-validation-chart');
@@ -1896,7 +1908,7 @@ function renderInavValidationChart(data) {
     const ctx = canvas.getContext('2d');
     if (inavValidationChart) inavValidationChart.destroy();
 
-    // Filter rows that have BOTH official and shadow iNAV changes
+    // Filter rows that have BOTH official and theoretical iNAV changes
     const validRows = data.filter(r => r.officialInavChange !== null && r.shadowInavChange !== null);
 
     if (validRows.length < 2) {
@@ -1917,7 +1929,7 @@ function renderInavValidationChart(data) {
         data: {
             labels,
             datasets: [{
-                label: '影子iNAV vs 官方iNAV 偏差 (%)',
+                label: '理论 iNAV vs 官方 iNAV 偏差 (%)',
                 data: deviations,
                 borderWidth: 2,
                 pointRadius: 0,
@@ -1940,7 +1952,7 @@ function renderInavValidationChart(data) {
             responsive: true,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                title: { display: true, text: '官方iNAV vs 影子iNAV 偏差（验证iNAV准确性）' },
+                title: { display: true, text: '官方 iNAV vs 理论 iNAV 偏差（验证 iNAV 准确性）' },
                 legend: { labels: { usePointStyle: true, pointStyle: 'line' } },
                 tooltip: {
                     callbacks: {

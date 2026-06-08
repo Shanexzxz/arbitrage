@@ -18,7 +18,7 @@
 1. **数据导入与回测（历史）**：支持直接导入 BBG BDH 导出的 Excel（自动识别 Value Page 格式），按日内分钟级数据跑策略回测。基准价格取每个交易日首行，**持仓不跨日结算**。
 2. **API 盯盘（实时）**：通过后端 `/quote` 代理实时拉取 Yahoo Finance 行情。
 3. **指标说明 / BBG 指南**：内置文档区块。
-4. **iNAV 处理**：14:30 后用 KT 影子 iNAV 替代冻结的官方 iNAV（见 commit `e285d7a`）。
+4. **iNAV 处理**：全天统一用 `Theo = Published × (1 + L × (KT/KP_ref − 1))` 计算理论 iNAV（KP_ref 在 14:20 KOSPI 主板收盘后自动 LOCF 冻结），不再区分 truth / shadow phase（见 commit `1e1d117`）。
 
 ---
 

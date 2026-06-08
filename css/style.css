@@ -1050,7 +1050,85 @@ header h1 {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 1rem;
+    margin-bottom: 0;
+}
+
+/* Variant: enforce exactly 2 / 1 column for "single-swap features" and
+ * "direction distribution" groups so the cards don't collapse to single
+ * columns on wide layouts (looks more deliberate than auto-fit). */
+.stats-grid.stats-grid-2 {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+}
+.stats-grid.stats-grid-1 {
+    grid-template-columns: 1fr;
+}
+
+/* Section wrapper for the 3 logical groups inside #stats-panel.
+ * Each section gets a thin uppercase header above its grid. */
+.stats-panel {
     margin-bottom: 2rem;
+}
+.stats-section + .stats-section {
+    margin-top: 1.25rem;
+}
+.stats-section-title {
+    margin: 0 0 0.55rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 0.35rem;
+}
+
+/* Wide single-card variant used for "direction distribution". The two-leg
+ * split inside is rendered with .dir-split. */
+.stat-card-wide {
+    text-align: center;
+}
+.dir-split {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+.dir-leg {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+}
+.dir-label {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    font-weight: 500;
+}
+.dir-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+.dir-value.sell { color: var(--color-danger); }
+.dir-value.buy  { color: var(--color-primary); }
+.dir-divider {
+    width: 1px;
+    height: 2.4rem;
+    background: var(--color-border);
+}
+
+/* Warning banner shown when threshold ≤ swapCost (degenerate config). */
+.stats-warning {
+    background: rgba(220, 38, 38, 0.08);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    border-left: 3px solid var(--color-danger);
+    color: #991b1b;
+    padding: 0.6rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    margin-bottom: 1rem;
+    line-height: 1.5;
 }
 
 .stat-card {

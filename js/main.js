@@ -242,24 +242,37 @@ function executeBacktest() {
     const resultsSection = document.getElementById('backtest-results');
     resultsSection.classList.remove('hidden');
 
-    // Average swap spread in ticks (how big the trigger moves are in HKD ticks)
+    // Per-swap spread distribution in ticks (how big the trigger moves are).
+    // Used in "single-swap characteristics" group.
     const swapsWithTicks = swaps.filter(s => s.spreadTicks != null);
     const avgSpreadTicks = swapsWithTicks.length > 0
         ? swapsWithTicks.reduce((s, t) => s + Math.abs(t.spreadTicks), 0) / swapsWithTicks.length
         : 0;
+    const maxSpreadTicks = swapsWithTicks.length > 0
+        ? Math.max(...swapsWithTicks.map(t => Math.abs(t.spreadTicks)))
+        : 0;
 
-    // Render simplified stats
+    // Direction split — used for the bias-distribution card.
+    // upSwaps   = sell-ETF swaps (trader exits ETF when premium > 0)
+    // downSwaps = buy-ETF swaps  (trader exits Hynix when premium < 0)
+    const dominant = upSwaps === downSwaps ? '均衡'
+                   : upSwaps  > downSwaps  ? 'Premium 主导'
+                   :                         'Discount 主导';
+
     renderStatsPanel({
         totalProfitHKD,
         totalSwaps: swaps.length,
-        profitableSwaps: profitableSwaps.length,
         avgProfit: swaps.length > 0 ? totalProfitHKD / swaps.length : 0,
         avgSpreadTicks,
+        maxSpreadTicks,
         upSwaps,
         downSwaps,
-        beforeCount: analysis.before.signalCount,
-        afterCount: analysis.after.signalCount,
+        dominant,
         dayCount,
+        // Threshold/swapCost so the panel can render the "threshold ≤ cost"
+        // warning when configuration is degenerate.
+        threshold: params.threshold,
+        swapCost: params.swapCost,
     });
 
     // Render charts
@@ -281,28 +294,95 @@ function executeBacktest() {
     renderConclusion(conclusion);
 }
 
+/**
+ * Render the result stats as 3 logical groups + an optional warning banner.
+ *
+ *   Group 1  汇总（4 cards）  : 覆盖天数 / 换仓次数 / 总锁定收益 / 平均单次收益
+ *   Group 2  单笔特征（2 cards）: 平均触发幅度 / 最大触发幅度 (in ticks)
+ *   Group 3  方向分布（1 card）: 卖 / 买 ETF 换仓数 + 主导偏向
+ *
+ * Removed (vs previous version):
+ *   - 「盈利换仓」  恒等于换仓次数（threshold > swapCost 时必盈利），
+ *                  退化为冗余信息。
+ *   - 「14:20 前/后 信号」 信号 ≠ 换仓，且新理论 iNAV 模型下 14:20
+ *                  分时段不再有 truth/shadow 切换的语义。每日机会分
+ *                  布留给下面「按日汇总」表呈现。
+ *
+ * Replacement for "盈利换仓":
+ *   - 当 threshold ≤ swapCost 时，配置已经退化（每笔都亏损），在面板
+ *     顶部渲染一条红色警告条，明确指引用户调参。
+ */
 function renderStatsPanel(stats) {
     const panel = document.getElementById('stats-panel');
-    const items = [
-        { label: '覆盖天数', value: `${stats.dayCount} 天`, hint: '回测数据涉及的交易日数' },
-        { label: '总锁定收益', value: `${stats.totalProfitHKD.toFixed(0)} HKD`, hint: '所有换仓的累计净收益（按可执行偏离扣换仓成本）' },
-        { label: '换仓次数', value: `${stats.totalSwaps} 次`, hint: '触发阈值且通过滞回检查的换仓总次数' },
-        { label: '盈利换仓', value: `${stats.profitableSwaps} 次`, hint: '锁定毛利 > 单笔成本的换仓数' },
-        { label: '平均单次收益', value: `${stats.avgProfit.toFixed(0)} HKD`, hint: '总收益 / 换仓次数' },
-        { label: '平均触发幅度', value: `${stats.avgSpreadTicks.toFixed(0)} ticks`, hint: `换仓时 |Last − Theo| 的平均 tick 数（@ ${TICK_SIZE} HKD/tick）` },
-        { label: '卖ETF换仓', value: `${stats.upSwaps} 次`, hint: 'ETF 高估（Premium）时把 ETF 换回 Hynix 底仓，以 Bid 评估' },
-        { label: '买ETF换仓', value: `${stats.downSwaps} 次`, hint: 'ETF 折价（Discount）时把 Hynix 底仓换成 ETF，以 Ask 评估' },
-        { label: '14:20前信号', value: `${stats.beforeCount} 次`, hint: '主板（KP）连续竞价时段超阈值的次数（统计口径，不等于换仓）' },
-        { label: '14:20后信号', value: `${stats.afterCount} 次`, hint: '主板收盘后（仅 Next Trade 在盘）超阈值的次数' },
-    ];
 
-    panel.innerHTML = items.map(item => `
+    // Optional warning: degenerate configuration
+    const warningHtml = stats.threshold <= stats.swapCost
+        ? `<div class="stats-warning">
+             ⚠ 当前阈值 ${stats.threshold.toFixed(2)}% ≤ 换仓成本 ${stats.swapCost.toFixed(2)}%，
+             所有触发都将亏损。请提高阈值，或确认成本输入是否高估。
+           </div>`
+        : '';
+
+    const card = (label, value, hint) => `
         <div class="stat-card">
-            <div class="value">${item.value}</div>
-            <div class="label">${item.label}</div>
-            <div class="stat-hint">${item.hint}</div>
+            <div class="value">${value}</div>
+            <div class="label">${label}</div>
+            <div class="stat-hint">${hint}</div>
+        </div>`;
+
+    // Group 1: 汇总
+    const summary = [
+        card('覆盖天数',    `${stats.dayCount} 天`,
+             '回测数据涉及的交易日数'),
+        card('换仓次数',    `${stats.totalSwaps} 次`,
+             '触发阈值且通过滞回检查的换仓总次数'),
+        card('总锁定收益',  `${stats.totalProfitHKD.toFixed(0)} HKD`,
+             '所有换仓累计净收益（按可执行偏离扣换仓成本）'),
+        card('平均单次收益', `${stats.avgProfit.toFixed(0)} HKD`,
+             '总锁定收益 / 换仓次数'),
+    ].join('');
+
+    // Group 2: 单笔特征
+    const perSwap = [
+        card('平均触发幅度', `${stats.avgSpreadTicks.toFixed(0)} ticks`,
+             `换仓时 |Last − Theo| 的平均 tick 数 @ ${TICK_SIZE} HKD/tick`),
+        card('最大触发幅度', `${stats.maxSpreadTicks.toFixed(0)} ticks`,
+             '最显著的一次机会大小，用于判断尾部行情'),
+    ].join('');
+
+    // Group 3: 方向分布 (single combined card)
+    const direction = `
+        <div class="stat-card stat-card-wide">
+            <div class="dir-split">
+                <div class="dir-leg">
+                    <span class="dir-label">卖 ETF</span>
+                    <span class="dir-value sell">${stats.upSwaps}</span>
+                </div>
+                <div class="dir-divider"></div>
+                <div class="dir-leg">
+                    <span class="dir-label">买 ETF</span>
+                    <span class="dir-value buy">${stats.downSwaps}</span>
+                </div>
+            </div>
+            <div class="label">方向分布</div>
+            <div class="stat-hint">${stats.dominant}（卖 ETF = Premium 时；买 ETF = Discount 时）</div>
+        </div>`;
+
+    panel.innerHTML = `
+        ${warningHtml}
+        <div class="stats-section">
+            <h4 class="stats-section-title">汇总</h4>
+            <div class="stats-grid">${summary}</div>
         </div>
-    `).join('');
+        <div class="stats-section">
+            <h4 class="stats-section-title">单笔特征</h4>
+            <div class="stats-grid stats-grid-2">${perSwap}</div>
+        </div>
+        <div class="stats-section">
+            <h4 class="stats-section-title">方向分布</h4>
+            <div class="stats-grid stats-grid-1">${direction}</div>
+        </div>
+    `;
 }
 
 function renderByDate(trades, analysis) {

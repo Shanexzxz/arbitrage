@@ -1203,6 +1203,14 @@ header h1 {
     height: 260px;
 }
 
+/* Same treatment for the dashboard's two full-width charts (偏离走势 +
+ * 官方 iNAV vs 理论 iNAV). Without an explicit height they'd render at
+ * their natural 2:1 aspect ratio (~600px tall on a 1200px viewport),
+ * which dwarfs the indicator cards and forces a lot of scrolling. */
+#dashboard > .chart-wrapper {
+    height: 240px;
+}
+
 /* In-chart toggle button (e.g. zoom mode for the Theo vs Published chart). */
 .zoom-toggle {
     position: absolute;

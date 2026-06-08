@@ -1904,6 +1904,7 @@ function renderDivergenceChart(data, threshold) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             interaction: {
                 mode: 'index',
                 intersect: false,
@@ -2113,6 +2114,7 @@ function renderInavComparisonChart(data) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 title: {

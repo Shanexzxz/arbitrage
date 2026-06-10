@@ -367,7 +367,7 @@ function renderStatsPanel(stats) {
     // Group 2: 单笔特征
     const perSwap = [
         card('平均触发幅度', `${stats.avgSpreadTicks.toFixed(0)} ticks`,
-             `换仓时 |Last − Theo| 的平均 tick 数 @ ${TICK_SIZE} HKD/tick`),
+             `换仓时 |ETF Last − 理论 iNAV| 的平均 tick 数 @ ${TICK_SIZE} HKD/tick`),
         card('最大触发幅度', `${stats.maxSpreadTicks.toFixed(0)} ticks`,
              '最显著的一次机会大小，用于判断尾部行情'),
     ].join('');
@@ -514,9 +514,9 @@ function renderTradeLog(swaps) {
                     <th>日期</th>
                     <th>换仓时间</th>
                     <th>方向</th>
-                    <th>Last 偏离</th>
+                    <th>盘口偏离 (Last)</th>
                     <th>可执行偏离</th>
-                    <th>Spread (ticks)</th>
+                    <th>价差 (ticks)</th>
                     <th>锁定毛利</th>
                     <th>换仓成本</th>
                     <th>净利%</th>
@@ -1271,7 +1271,7 @@ function recalcTheoMonitor() {
         rCell.textContent = '—';
         multCell.textContent = '—';
         theoCell.innerHTML = '<strong>—</strong>';
-        tbody.innerHTML = '<tr><td colspan="8" class="theo-mon-empty">填入 Published / KP / KT 后自动计算…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="theo-mon-empty">填入 官方 iNAV / KP / KT 后自动计算…</td></tr>';
         return;
     }
 
@@ -1288,11 +1288,11 @@ function recalcTheoMonitor() {
     // input is missing — those rows just show "—" placeholders.
     const TICK = 0.005;
     const legs = [
-        { label: 'Last',           value: last },
-        { label: 'Bid',            value: bid },
-        { label: 'Ask',            value: ask },
-        { label: 'Mid',            value: mid, hint: '(Bid + Ask) / 2' },
-        { label: 'Published iNAV', value: published, hint: '与 Theo 的差 = 杠杆漂移项' },
+        { label: 'Last',       value: last },
+        { label: 'Bid',        value: bid },
+        { label: 'Ask',        value: ask },
+        { label: 'Mid',        value: mid, hint: '(Bid + Ask) / 2' },
+        { label: '官方 iNAV',  value: published, hint: '与理论 iNAV 的差 = 杠杆漂移项' },
     ];
 
     const rowsHtml = legs.map(leg => {
@@ -1309,9 +1309,9 @@ function recalcTheoMonitor() {
         const bias = premPct >  0.05 ? 'premium'
                    : premPct < -0.05 ? 'discount'
                    :                   'flat';
-        const biasTag = bias === 'premium'  ? '<span class="bias-tag bias-premium">Premium</span>'
-                      : bias === 'discount' ? '<span class="bias-tag bias-discount">Discount</span>'
-                      :                       '<span class="bias-tag bias-flat">Flat</span>';
+        const biasTag = bias === 'premium'  ? '<span class="bias-tag bias-premium">溢价</span>'
+                      : bias === 'discount' ? '<span class="bias-tag bias-discount">折价</span>'
+                      :                       '<span class="bias-tag bias-flat">中性</span>';
         const sign = v => (v >= 0 ? '+' : '') + v;
         const premColor = premPct >  0.05 ? '#dc2626'
                         : premPct < -0.05 ? '#2563eb'
@@ -1837,9 +1837,9 @@ function renderDashboardDivergenceIndicator(data, params) {
     }
 
     const valueClass = divergence > 0.1 ? 'positive' : (divergence < -0.1 ? 'negative' : 'neutral');
-    const biasTag = bias === 'premium'  ? '<span class="bias-tag bias-premium">Premium</span>'
-                  : bias === 'discount' ? '<span class="bias-tag bias-discount">Discount</span>'
-                  :                       '<span class="bias-tag bias-flat">Flat</span>';
+    const biasTag = bias === 'premium'  ? '<span class="bias-tag bias-premium">溢价</span>'
+                  : bias === 'discount' ? '<span class="bias-tag bias-discount">折价</span>'
+                  :                       '<span class="bias-tag bias-flat">中性</span>';
     const ticksStr = ticks != null ? `${ticks >= 0 ? '+' : ''}${ticks} ticks` : '-';
 
     container.innerHTML = `
@@ -1849,7 +1849,7 @@ function renderDashboardDivergenceIndicator(data, params) {
         </div>
         <div class="div-card">
             <div class="div-value neutral">${theo ? theo.toFixed(3) : '-'}</div>
-            <div class="div-label">Theo iNAV (HKD)</div>
+            <div class="div-label">理论 iNAV (HKD)</div>
         </div>
         <div class="div-card ${signalClass}">
             <div class="div-value ${valueClass}">${divergence >= 0 ? '+' : ''}${divergence.toFixed(3)}%</div>
@@ -1958,7 +1958,7 @@ function renderDivergenceChart(data, threshold, params) {
             datasets: [
                 // Reference (drawn first so the main series sits on top)
                 {
-                    label: '(Last − Published) / Published — 对照',
+                    label: '相对官方 iNAV 偏离（对照）',
                     data: publishedPremiums,
                     borderColor: 'rgba(100, 116, 139, 0.55)',
                     borderWidth: 1.5,
@@ -1972,7 +1972,7 @@ function renderDivergenceChart(data, threshold, params) {
                 },
                 // Main series (Theo-based premium, engine's actual input)
                 {
-                    label: '(Last − Theo) / Theo — 实际触发',
+                    label: '相对理论 iNAV 偏离（实际触发）',
                     data: theoPremiums,
                     borderWidth: 2,
                     pointRadius: 0,
@@ -1998,7 +1998,7 @@ function renderDivergenceChart(data, threshold, params) {
                 intersect: false,
             },
             plugins: {
-                title: { display: true, text: 'ETF Last 偏离走势（vs Theo · 对照: vs Published）' },
+                title: { display: true, text: 'ETF 偏离走势（相对理论 iNAV · 灰线为相对官方 iNAV 的对照）' },
                 legend: {
                     labels: {
                         usePointStyle: true,
@@ -2011,7 +2011,7 @@ function renderDivergenceChart(data, threshold, params) {
                             const val = ctx.parsed.y;
                             if (val == null) return '';
                             const sign = val >= 0 ? '+' : '';
-                            const which = ctx.datasetIndex === 1 ? 'vs Theo' : 'vs Published';
+                            const which = ctx.datasetIndex === 1 ? '相对理论 iNAV' : '相对官方 iNAV';
                             return `${which}: ${sign}${val.toFixed(3)}%`;
                         },
                         labelColor: (ctx) => {

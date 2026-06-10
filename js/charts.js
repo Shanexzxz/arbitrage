@@ -348,7 +348,7 @@ function renderTriggerHeatmap(data, trades, params) {
     ctx.fillText('按日 × 时段 触发热力图', padL, 6);
     ctx.font = '10px -apple-system, "Segoe UI", sans-serif';
     ctx.fillStyle = '#64748b';
-    ctx.fillText(`颜色 = |premium|（封顶 ${PREM_CAP}%）　▲ 卖 ETF　▼ 买 ETF　灰底 = 窗口外`, padL, 22);
+    ctx.fillText(`颜色 = |偏离%|（封顶 ${PREM_CAP}%）　▲ 卖 ETF　▼ 买 ETF　灰底 = 窗口外`, padL, 22);
 
     // ----- Cells -----
     for (let d = 0; d < nDays; d++) {
@@ -466,7 +466,7 @@ function renderTriggerHeatmap(data, trades, params) {
             ? (fired.direction === 'sell_etf_buy_stock' ? ' · ▲ 卖 ETF 换仓' : ' · ▼ 买 ETF 换仓')
             : '';
         const premLine = cell
-            ? `|premium|<sub>max</sub> = ${cell.absPrem.toFixed(3)}% (${cell.signedPrem >= 0 ? '+' : ''}${cell.signedPrem.toFixed(3)}%)`
+            ? `区间最大|偏离| = ${cell.absPrem.toFixed(3)}% (${cell.signedPrem >= 0 ? '+' : ''}${cell.signedPrem.toFixed(3)}%)`
             : '无数据';
         tooltip.innerHTML = `
             <div class="heatmap-tooltip-head">${dateLabel} ${timeStr}${winNote}</div>

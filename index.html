@@ -161,27 +161,28 @@
             </button>
             <div id="monitor-content" class="collapsible">
                 <div class="collapsible-inner">
-                    <!-- ========== (1) Theo Premium 监控 ========== -->
+                    <!-- ========== (1) 理论 iNAV 偏离监控 ========== -->
                     <div class="monitor-subpanel">
-                        <h3 style="margin-top:0; font-size:0.95rem;">Theo Premium 监控 <span class="section-tag tag-live">手动输入</span></h3>
-                        <p class="section-subtitle">把 Bloomberg Terminal 当前 5 个值（Bid / Ask / Last / KP Last / KT Last + Published iNAV）粘进来，立即按
-                            <code>Theo = Published × (1 + L × (KT/KP_ref − 1))</code> 算出 5 行 reference price 的 premium / discount，跟桌面端 Excel 行情表完全一致。
+                        <h3 style="margin-top:0; font-size:0.95rem;">理论 iNAV 偏离监控 <span class="section-tag tag-live">手动输入</span></h3>
+                        <p class="section-subtitle">把 Bloomberg Terminal 当前 6 个值（官方 iNAV / Bid / Ask / Last / KP Last / KT Last）粘进来，立即按
+                            <code>理论 iNAV = 官方 iNAV × (1 + L × (KT/KP_ref − 1))</code> 算出 5 行参考价（Last / Bid / Ask / Mid / 官方 iNAV）的偏离，
+                            跟桌面端 Excel 行情表完全一致。
                         </p>
 
                         <div class="theo-mon-grid">
                             <!-- Block 1: Live Inputs -->
                             <div class="theo-mon-card">
-                                <h4>1. Bloomberg Live Data <span class="theo-mon-hint">手动粘贴</span></h4>
+                                <h4>1. Bloomberg 实时数据 <span class="theo-mon-hint">手动粘贴</span></h4>
                                 <table class="theo-mon-table">
                                     <thead>
-                                        <tr><th>字段</th><th>BBG Ticker</th><th>Live Value</th></tr>
+                                        <tr><th>字段</th><th>BBG Ticker</th><th>当前值</th></tr>
                                     </thead>
                                     <tbody>
-                                        <tr><td>7709 HK iNAV (Published)</td><td><code>7709IV Index</code></td>
+                                        <tr><td>7709 HK 官方 iNAV</td><td><code>7709IV Index</code></td>
                                             <td><input id="tm-published" type="number" step="any" placeholder="95.805"></td></tr>
                                         <tr><td>7709 HK Bid</td><td><code>7709 HK Equity</code></td>
                                             <td><input id="tm-bid" type="number" step="any" placeholder="97.820"></td></tr>
-                                        <tr><td>7709 HK Offer (Ask)</td><td><code>7709 HK Equity</code></td>
+                                        <tr><td>7709 HK Ask</td><td><code>7709 HK Equity</code></td>
                                             <td><input id="tm-ask" type="number" step="any" placeholder="97.840"></td></tr>
                                         <tr><td>7709 HK Last</td><td><code>7709 HK Equity</code></td>
                                             <td><input id="tm-last" type="number" step="any" placeholder="97.920"></td></tr>
@@ -199,38 +200,38 @@
 
                             <!-- Block 2: Theo Calc -->
                             <div class="theo-mon-card">
-                                <h4>2. Theoretical iNAV Calculation</h4>
+                                <h4>2. 理论 iNAV 计算</h4>
                                 <table class="theo-mon-table">
                                     <tbody>
-                                        <tr><td>Leverage factor</td><td><code>L</code></td><td>2.0</td></tr>
+                                        <tr><td>杠杆系数</td><td><code>L</code></td><td>2.0</td></tr>
                                         <tr><td>r = KT / KP − 1</td><td id="tm-r-cell" class="num-cell">—</td><td></td></tr>
                                         <tr><td>1 + L × r</td><td id="tm-mult-cell" class="num-cell">—</td><td></td></tr>
                                         <tr class="highlight">
-                                            <td colspan="2"><strong>Theoretical iNAV</strong></td>
+                                            <td colspan="2"><strong>理论 iNAV</strong></td>
                                             <td id="tm-theo-cell" class="num-cell"><strong>—</strong></td>
                                         </tr>
                                     </tbody>
                                 </table>
                                 <p class="theo-mon-formula">公式：
-                                    <code>Theo = Published × (1 + L × r)</code>，全天通用，不分时段。
+                                    <code>理论 iNAV = 官方 iNAV × (1 + L × r)</code>，全天通用，不分时段。
                                 </p>
                             </div>
                         </div>
 
-                        <!-- Block 3: Premium / Discount table -->
-                        <h4 style="margin:1rem 0 0.4rem; font-size:0.85rem;">3. Premium / Discount vs Theoretical iNAV</h4>
+                        <!-- Block 3: 偏离表 -->
+                        <h4 style="margin:1rem 0 0.4rem; font-size:0.85rem;">3. 各参考价相对理论 iNAV 的偏离</h4>
                         <div class="theo-mon-table-wrap">
                             <table class="theo-mon-table theo-mon-result" id="tm-result-table">
                                 <thead>
                                     <tr>
-                                        <th>Leg</th>
-                                        <th>Reference</th>
-                                        <th>Theo iNAV</th>
-                                        <th>Spread (HKD)</th>
-                                        <th>Premium %</th>
-                                        <th>Bias</th>
-                                        <th>Tick Size</th>
-                                        <th>Spread (ticks)</th>
+                                        <th>参考价</th>
+                                        <th>当前值</th>
+                                        <th>理论 iNAV</th>
+                                        <th>价差 (HKD)</th>
+                                        <th>偏离 %</th>
+                                        <th>方向</th>
+                                        <th>tick size</th>
+                                        <th>价差 (ticks)</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tm-result-tbody">
@@ -290,21 +291,21 @@
                 <div class="guide-grid">
                     <div class="guide-card">
                         <h3>理论 iNAV 公式（全天通用）</h3>
-                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">系统在<strong>任意时刻</strong>都用同一个公式：拿当前 Published iNAV 乘以"自上一笔 KP 印出之后 KT 漂移导致的杠杆修正"。</p>
-                        <pre class="bbg-code">Theo_iNAV(t) = Published_iNAV(t) × (1 + L × r)
-r = KT(t) / KP_ref(t) − 1     L = 2 (本品为 Daily 2x)</pre>
+                        <p class="note" style="margin-top:0; margin-bottom:0.75rem;">系统在<strong>任意时刻</strong>都用同一个公式：拿当前官方 iNAV 乘以"自上一笔 KP 印出之后 KT 漂移导致的杠杆修正"。</p>
+                        <pre class="bbg-code">理论 iNAV(t) = 官方 iNAV(t) × (1 + L × r)
+r = KT(t) / KP_ref(t) − 1     L = 2 （本品为 Daily 2x）</pre>
                         <table class="formula-table">
                             <thead><tr><th>变量</th><th>含义</th></tr></thead>
                             <tbody>
-                                <tr><td>Published</td><td>BBG 发布的 iNAV (<code>7709IV Index</code>)，已隐含 FX/管理费/杠杆复利</td></tr>
+                                <tr><td>官方 iNAV</td><td>BBG 发布的 iNAV (<code>7709IV Index</code>)，已隐含汇率 / 管理费 / 杠杆复利</td></tr>
                                 <tr><td>KT</td><td>当前 NEXTrade 价 (<code>000660 KT Equity</code>)，08:00–20:00 KST 全天有 tick</td></tr>
                                 <tr><td>KP_ref</td><td>当前最近一笔 KP (<code>000660 KP Equity</code>)；KP 在 14:20 收盘集合竞价后冻结，r 仅由 KT 推动</td></tr>
                                 <tr><td>r</td><td>正股自上次 KRX 印出以来的漂移率，× 2 即得 ETF 应有的修正</td></tr>
                             </tbody>
                         </table>
                         <p class="note" style="margin-top:0.75rem;">
-                            <strong>设计哲学</strong>：不再区分"14:20 前用 truth / 后用 shadow"，因为 Published iNAV 自身就是 ground truth；
-                            14:30 KRX 收盘后 Published 也会冻结，但此时 KP_ref 同步冻结于 14:20 那笔，<code>r = KT/KP_14:20 − 1</code>
+                            <strong>设计哲学</strong>：不再区分"14:20 前用真值 / 后用合成值"，因为官方 iNAV 自身就是 ground truth；
+                            14:30 KRX 收盘后官方 iNAV 也会冻结，但此时 KP_ref 同步冻结于 14:20 那笔，<code>r = KT / KP<sub>14:20</sub> − 1</code>
                             正好刻画"KRX 收盘以来的漂移"，模型自然延续。
                         </p>
                     </div>
@@ -312,25 +313,24 @@ r = KT(t) / KP_ref(t) − 1     L = 2 (本品为 Daily 2x)</pre>
                         <h3>多重 ETF 参考价（Last / Bid / Ask）</h3>
                         <p class="note" style="margin-top:0; margin-bottom:0.75rem;">单看 Last 价容易高估可执行性。系统对 4 个参考价分别计算偏离，回测按方向选用可成交侧。</p>
                         <table class="formula-table">
-                            <thead><tr><th>参考价</th><th>premium 公式</th><th>用途</th></tr></thead>
+                            <thead><tr><th>参考价</th><th>偏离公式</th><th>用途</th></tr></thead>
                             <tbody>
-                                <tr><td>Last</td><td>(Last − Theo) / Theo</td><td>触发判定（visible quote）</td></tr>
-                                <tr><td>Bid</td><td>(Bid − Theo) / Theo</td><td>卖 ETF 时的可执行偏离</td></tr>
-                                <tr><td>Ask</td><td>(Ask − Theo) / Theo</td><td>买 ETF 时的可执行偏离</td></tr>
-                                <tr><td>Mid</td><td>((Bid+Ask)/2 − Theo) / Theo</td><td>中性参考</td></tr>
+                                <tr><td>Last</td><td>(Last − 理论 iNAV) / 理论 iNAV</td><td>触发判定（盘口可见报价）</td></tr>
+                                <tr><td>Bid</td><td>(Bid − 理论 iNAV) / 理论 iNAV</td><td>卖 ETF 时的可执行偏离</td></tr>
+                                <tr><td>Ask</td><td>(Ask − 理论 iNAV) / 理论 iNAV</td><td>买 ETF 时的可执行偏离</td></tr>
+                                <tr><td>Mid</td><td>((Bid + Ask) / 2 − 理论 iNAV) / 理论 iNAV</td><td>中性参考</td></tr>
                             </tbody>
                         </table>
                         <p class="note" style="margin-top:0.75rem;">
-                            <strong>Tick 维度</strong>：7709 HK tick size = 0.005 HKD。
-                            交易明细里给出 <code>spread (ticks) = (Last − Theo) / 0.005</code>，
-                            实盘判断"信号是否大过 1–2 tick 的微结构噪音"非常实用。
+                            <strong>tick 维度</strong>：7709 HK 的 tick size = 0.005 HKD。
+                            交易明细里给出 <code>价差(ticks) = (Last − 理论 iNAV) / 0.005</code>，
+                            实盘用来判断"信号是否大过 1–2 tick 的微结构噪音"非常实用。
                         </p>
                         <p class="note" style="margin-top:0.5rem;">
-                            <strong>Bias 标记</strong>：每行的 premium 自动归类为
-                            <span class="bias-tag bias-premium">Premium</span>（>+0.05%）/
-                            <span class="bias-tag bias-discount">Discount</span>（<−0.05%）/
-                            <span class="bias-tag bias-flat">Flat</span>（中间），
-                            便于人眼快速扫描偏向。
+                            <strong>方向标记</strong>：每行的偏离自动归类为
+                            <span class="bias-tag bias-premium">溢价</span>（&gt; +0.05%）/
+                            <span class="bias-tag bias-discount">折价</span>（&lt; −0.05%）/
+                            <span class="bias-tag bias-flat">中性</span>（中间），便于人眼快速扫描偏向。
                         </p>
                         <p class="note" style="margin-top:0.5rem;">
                             <strong>S₀ 严格基准</strong>：当日早盘 KP 尚未 print 时，KP_ref 默认回退到 KT；如想严格按"前一日 KRX 收盘"计算 r，可在数据导入区填入"前一日 KRX 收盘"。

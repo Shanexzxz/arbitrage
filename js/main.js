@@ -1911,7 +1911,22 @@ function renderDivergenceChart(data, threshold, params) {
     if (divergenceChart) divergenceChart.destroy();
 
     const labels = buildAxisLabels(data);
-    const premiums = data.map(d => d.premiumDiscount);
+    // Main series: ETF Last vs **Theoretical** iNAV — this is the engine's
+    // actual decision input.
+    const theoPremiums = data.map(d => d.premiumDiscount);
+    // Reference series: ETF Last vs **Published** iNAV — same metric but
+    // computed against the raw BBG-published value. Plotted as a faint
+    // grey dashed line so the user can see:
+    //   - Before 14:20 the two lines overlap almost exactly (Theo ≈ Published
+    //     when r ≈ 0).
+    //   - After 14:20, KP freezes and KT keeps moving, so Theo and Published
+    //     diverge — Published premium becomes stale, Theo premium tracks
+    //     reality. The visual gap directly shows why we use Theo as the
+    //     trigger source.
+    const publishedPremiums = data.map(d => {
+        if (d.etfPrice == null || d.inavPrice == null) return null;
+        return (d.etfPrice - d.inavPrice) / d.inavPrice * 100;
+    });
     const { dayBoundaries, cutoffIndices } = findChartMarkers(data);
 
     // Compute the "untradable" index ranges per day so the chart can grey them
@@ -1940,22 +1955,40 @@ function renderDivergenceChart(data, threshold, params) {
         type: 'line',
         data: {
             labels,
-            datasets: [{
-                label: '溢价/折价率 (%)',
-                data: premiums,
-                borderWidth: 2,
-                pointRadius: 0,
-                pointHoverRadius: 5,
-                pointHitRadius: 10,
-                segment: {
-                    borderColor: (ctx) => ctx.p1.parsed.y >= 0 ? '#dc2626' : '#2563eb',
+            datasets: [
+                // Reference (drawn first so the main series sits on top)
+                {
+                    label: '(Last − Published) / Published — 对照',
+                    data: publishedPremiums,
+                    borderColor: 'rgba(100, 116, 139, 0.55)',
+                    borderWidth: 1.5,
+                    borderDash: [4, 3],
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    pointHitRadius: 10,
+                    fill: false,
+                    spanGaps: true,
+                    order: 2,
                 },
-                fill: {
-                    target: { value: 0 },
-                    above: 'rgba(220, 38, 38, 0.08)',
-                    below: 'rgba(37, 99, 235, 0.08)',
+                // Main series (Theo-based premium, engine's actual input)
+                {
+                    label: '(Last − Theo) / Theo — 实际触发',
+                    data: theoPremiums,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointHitRadius: 10,
+                    segment: {
+                        borderColor: (ctx) => ctx.p1.parsed.y >= 0 ? '#dc2626' : '#2563eb',
+                    },
+                    fill: {
+                        target: { value: 0 },
+                        above: 'rgba(220, 38, 38, 0.08)',
+                        below: 'rgba(37, 99, 235, 0.08)',
+                    },
+                    order: 1,
                 },
-            }],
+            ],
         },
         options: {
             responsive: true,
@@ -1965,7 +1998,7 @@ function renderDivergenceChart(data, threshold, params) {
                 intersect: false,
             },
             plugins: {
-                title: { display: true, text: 'ETF与iNAV偏离走势' },
+                title: { display: true, text: 'ETF Last 偏离走势（vs Theo · 对照: vs Published）' },
                 legend: {
                     labels: {
                         usePointStyle: true,
@@ -1978,10 +2011,14 @@ function renderDivergenceChart(data, threshold, params) {
                             const val = ctx.parsed.y;
                             if (val == null) return '';
                             const sign = val >= 0 ? '+' : '';
-                            const tag = val >= 0 ? '溢价' : '折价';
-                            return `${tag}: ${sign}${val.toFixed(3)}%`;
+                            const which = ctx.datasetIndex === 1 ? 'vs Theo' : 'vs Published';
+                            return `${which}: ${sign}${val.toFixed(3)}%`;
                         },
                         labelColor: (ctx) => {
+                            // Reference series stays grey; main series shows premium/discount color.
+                            if (ctx.datasetIndex === 0) {
+                                return { borderColor: 'rgba(100, 116, 139, 0.55)', backgroundColor: 'rgba(100, 116, 139, 0.55)' };
+                            }
                             const val = ctx.parsed.y;
                             const color = val >= 0 ? '#dc2626' : '#2563eb';
                             return { borderColor: color, backgroundColor: color };

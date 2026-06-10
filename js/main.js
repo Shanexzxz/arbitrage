@@ -288,9 +288,9 @@ function executeBacktest() {
         windowEnd: params.windowEnd,
     });
 
-    // Render charts
+    // Render charts (heatmap needs trading-window params for the grey overlay)
     destroyCharts();
-    renderCharts(data, swaps);
+    renderCharts(data, swaps, params);
 
     // Render swap log
     renderByDate(swaps, analysis);

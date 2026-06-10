@@ -1215,6 +1215,40 @@ header h1 {
 #backtest-results .charts-container > .chart-wrapper:not(:first-child) {
     height: 260px;
 }
+/* The heatmap canvas isn't driven by Chart.js, so it needs explicit CSS
+ * sizing to fill its wrapper. Other Chart.js canvases work because the
+ * library sizes them itself when maintainAspectRatio: false. */
+#pnl-chart {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+/* Heatmap floating tooltip (created lazily by renderTriggerHeatmap). */
+.heatmap-tooltip {
+    position: fixed;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.92);
+    color: #f8fafc;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    pointer-events: none;
+    display: none;
+    max-width: 240px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.heatmap-tooltip-head {
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+    color: #fef3c7;
+}
+.heatmap-tooltip-swap {
+    margin-top: 0.2rem;
+    font-weight: 600;
+    color: #fbbf24;
+}
 
 /* Same treatment for the dashboard's two full-width charts (偏离走势 +
  * 官方 iNAV vs 理论 iNAV). Without an explicit height they'd render at

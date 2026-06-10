@@ -72,19 +72,33 @@ function executablePremium(row, direction) {
  *   - After a swap fires on direction D, D is disarmed until the premium
  *     comes back within `threshold * 0.5` of zero on that side.
  *
+ * Trading window:
+ *   - Only rows with `windowStart ≤ row.time ≤ windowEnd` (HKT) are eligible
+ *     to fire. Rows outside the window can still re-arm hysteresis flags so
+ *     a "wide pre-window divergence that comes back into normal range before
+ *     the window opens" doesn't block the very first in-window opportunity,
+ *     but they will never produce a swap themselves. This excludes:
+ *       * Pre-open / morning sessions (no afternoon-only mode requirement)
+ *       * HKEX lunch break (12:00–13:00 HKT, ETF not trading)
+ *       * Post-15:55 buffer before 16:00 close (liquidity collapse)
+ *       * Post-16:00 sessions where 7709 HK can't be traded at all
+ *
  * Day boundary:
  *   - The two arm flags reset at the start of each new day.
  *
  * @param {Array} data
- * @param {Object} params - { threshold, swapCost, tradeAmount }
+ * @param {Object} params - { threshold, swapCost, tradeAmount, windowStart, windowEnd }
  *     swapCost: total cost per swap in % (covers both legs: sell one, buy the
  *               other). The legacy `txCost` field is still accepted for
  *               backward compatibility and is treated as swapCost.
+ *     windowStart, windowEnd: 'HH:MM' HKT, defaults '13:00' / '15:55'.
  * @returns {Array<Object>} swaps
  */
 export function runBacktest(data, params) {
     const { threshold, tradeAmount } = params;
     const swapCost = params.swapCost != null ? params.swapCost : (params.txCost || 0);
+    const windowStart = params.windowStart || '13:00';
+    const windowEnd   = params.windowEnd   || '15:55';
 
     const swaps = [];
     const groups = groupByDate(data);
@@ -102,9 +116,17 @@ export function runBacktest(data, params) {
             const premiumLast = row.premiumLast != null ? row.premiumLast : row.premiumDiscount;
             if (premiumLast == null) continue;
 
-            // Re-arm on the visible (Last-based) premium.
+            // Re-arm on the visible (Last-based) premium. We still update
+            // arm state even outside the trading window so we don't carry a
+            // stale "armed-from-yesterday" flag into the first window row.
             if (premiumLast <  halfBand) armedUp = true;
             if (premiumLast > -halfBand) armedDown = true;
+
+            // Trading-window gate. Outside the window we can re-arm but we
+            // can't fire — there is no executable trade.
+            const t = row.time || '';
+            const inWindow = t >= windowStart && t <= windowEnd;
+            if (!inWindow) continue;
 
             const fireUp   = armedUp   && premiumLast >=  threshold;
             const fireDown = armedDown && premiumLast <= -threshold;

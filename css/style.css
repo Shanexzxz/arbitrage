@@ -1132,6 +1132,19 @@ header h1 {
     line-height: 1.45;
 }
 
+/* Info banner — neutral grey-blue, explains current trading-window scope. */
+.stats-info {
+    background: rgba(37, 99, 235, 0.05);
+    border: 1px solid rgba(37, 99, 235, 0.2);
+    border-left: 3px solid var(--color-primary);
+    color: #1e3a5f;
+    padding: 0.4rem 0.7rem;
+    border-radius: 5px;
+    font-size: 0.72rem;
+    margin-bottom: 0.7rem;
+    line-height: 1.4;
+}
+
 .stat-card {
     text-align: center;
     padding: 0.6rem 0.7rem 0.55rem;

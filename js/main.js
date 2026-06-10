@@ -10,10 +10,21 @@ import { generateConclusion } from './conclusion.js';
 const TICK_SIZE = 0.005;
 
 function getParams() {
+    // Trading window (HKT). Defaults to afternoon-only:
+    //   13:00 — earliest trade (skip morning + lunch break)
+    //   15:55 — latest trade  (5-min buffer before HKEX 16:00 close so we
+    //           don't try to fire when liquidity is already gone)
+    // Both endpoints are inclusive. Falls back to a permissive default if
+    // the user types garbage like ":xx".
+    const validHM = s => /^\d{2}:\d{2}$/.test(s);
+    const winStartRaw = document.getElementById('window-start')?.value.trim() || '13:00';
+    const winEndRaw   = document.getElementById('window-end')?.value.trim()   || '15:55';
     return {
         threshold: parseFloat(document.getElementById('threshold').value) || 2.0,
         swapCost: parseFloat(document.getElementById('swap-cost').value) || 0.4,
         tradeAmount: parseFloat(document.getElementById('trade-amount').value) || 100000,
+        windowStart: validHM(winStartRaw) ? winStartRaw : '13:00',
+        windowEnd:   validHM(winEndRaw)   ? winEndRaw   : '15:55',
     };
 }
 
@@ -226,7 +237,7 @@ function executeBacktest() {
     const analysis = analyzeDivergence(data, params.threshold);
 
     // Show and render dashboard
-    renderDashboard(data, params.threshold, analysis);
+    renderDashboard(data, params.threshold, analysis, params);
 
     // Run swap engine
     const swaps = runBacktest(data, params);
@@ -273,6 +284,8 @@ function executeBacktest() {
         // warning when configuration is degenerate.
         threshold: params.threshold,
         swapCost: params.swapCost,
+        windowStart: params.windowStart,
+        windowEnd: params.windowEnd,
     });
 
     // Render charts
@@ -323,6 +336,15 @@ function renderStatsPanel(stats) {
            </div>`
         : '';
 
+    // Info: trading-window scope (helps the user understand why they don't
+    // see a 16:17 swap even when the divergence chart shows a wide premium).
+    const winInfoHtml = (stats.windowStart && stats.windowEnd)
+        ? `<div class="stats-info">
+             ℹ 交易窗口：<strong>${stats.windowStart} – ${stats.windowEnd}</strong> (HKT) ·
+             窗口外的偏离不会触发换仓（因 7709 HK 已不在连续竞价 / 港股已收盘）。
+           </div>`
+        : '';
+
     const card = (label, value, hint) => `
         <div class="stat-card">
             <div class="value">${value}</div>
@@ -370,6 +392,7 @@ function renderStatsPanel(stats) {
 
     panel.innerHTML = `
         ${warningHtml}
+        ${winInfoHtml}
         <div class="stats-section">
             <h4 class="stats-section-title">汇总</h4>
             <div class="stats-grid">${summary}</div>
@@ -1761,10 +1784,10 @@ function refreshDashboard() {
 
     const params = getParams();
     const analysis = analyzeDivergence(data, params.threshold);
-    renderDashboard(data, params.threshold, analysis);
+    renderDashboard(data, params.threshold, analysis, params);
 
     // Render the last-row divergence indicator in the dashboard
-    renderDashboardDivergenceIndicator(data);
+    renderDashboardDivergenceIndicator(data, params);
 }
 
 /**
@@ -1772,7 +1795,7 @@ function refreshDashboard() {
  * Mirrors the layout of the desk's "Premium / Discount Monitor" sheet —
  * shows ETF Last + Theo iNAV + Bias + Spread-in-ticks + suggested action.
  */
-function renderDashboardDivergenceIndicator(data) {
+function renderDashboardDivergenceIndicator(data, params) {
     const container = document.getElementById('dashboard-divergence-indicator');
     if (!container) return;
 
@@ -1787,11 +1810,21 @@ function renderDashboardDivergenceIndicator(data) {
     const bias = lastRow.bias || (divergence > 0.05 ? 'premium' : divergence < -0.05 ? 'discount' : 'flat');
     const ticks = (theo && etf) ? Math.round((etf - theo) / TICK_SIZE) : null;
 
+    // Trading-window check — if the most recent row is outside the window,
+    // any displayed divergence is purely informational; we can't actually
+    // trade on it, so we override the action hint with that warning instead
+    // of suggesting a direction.
+    const winStart = params?.windowStart || '13:00';
+    const winEnd   = params?.windowEnd   || '15:55';
+    const inWindow = !time || (time >= winStart && time <= winEnd);
+
     let signalClass = '';
     let actionText = '';
     let actionClass = 'hold';
 
-    if (absDivergence >= 2.0) {
+    if (!inWindow) {
+        actionText = `非交易时段（窗口 ${winStart}–${winEnd}），不触发`;
+    } else if (absDivergence >= 2.0) {
         signalClass = 'signal-strong';
         actionText = divergence > 0 ? '强烈卖出ETF / 买入股票' : '强烈买入ETF / 卖出股票';
         actionClass = divergence > 0 ? 'sell' : 'buy';
@@ -1834,7 +1867,7 @@ function renderDashboardDivergenceIndicator(data) {
     `;
 }
 
-function renderDashboard(data, threshold, analysis) {
+function renderDashboard(data, threshold, analysis, params) {
     const dashboard = document.getElementById('dashboard');
     dashboard.classList.remove('hidden');
 
@@ -1842,8 +1875,8 @@ function renderDashboard(data, threshold, analysis) {
         analysis = analyzeDivergence(data, threshold);
     }
 
-    // Render divergence chart
-    renderDivergenceChart(data, threshold);
+    // Render divergence chart (with optional trading-window overlay)
+    renderDivergenceChart(data, threshold, params);
 
     // Render iNAV price comparison chart (official vs shadow HKD values)
     renderInavComparisonChart(data);
@@ -1873,13 +1906,35 @@ function buildAxisLabels(data) {
     });
 }
 
-function renderDivergenceChart(data, threshold) {
+function renderDivergenceChart(data, threshold, params) {
     const ctx = document.getElementById('divergence-chart').getContext('2d');
     if (divergenceChart) divergenceChart.destroy();
 
     const labels = buildAxisLabels(data);
     const premiums = data.map(d => d.premiumDiscount);
     const { dayBoundaries, cutoffIndices } = findChartMarkers(data);
+
+    // Compute the "untradable" index ranges per day so the chart can grey them
+    // out. A row is untradable iff its time falls outside [windowStart, windowEnd].
+    // For each contiguous untradable run we record [startIdx, endIdx] (inclusive
+    // on both ends, in global-data indices).
+    const winStart = params?.windowStart || '13:00';
+    const winEnd   = params?.windowEnd   || '15:55';
+    const untradableRanges = [];
+    {
+        let runStart = -1;
+        for (let i = 0; i < data.length; i++) {
+            const t = data[i].time || '';
+            const inWin = t >= winStart && t <= winEnd;
+            if (!inWin) {
+                if (runStart < 0) runStart = i;
+            } else if (runStart >= 0) {
+                untradableRanges.push([runStart, i - 1]);
+                runStart = -1;
+            }
+        }
+        if (runStart >= 0) untradableRanges.push([runStart, data.length - 1]);
+    }
 
     divergenceChart = new Chart(ctx, {
         type: 'line',
@@ -1942,6 +1997,25 @@ function renderDivergenceChart(data, threshold) {
             },
         },
         plugins: [{
+            id: 'untradableOverlay',
+            // Paint grey shading over time ranges outside [windowStart, windowEnd]
+            // BEFORE the dataset is drawn so the line stays on top.
+            beforeDatasetsDraw(chart) {
+                if (!untradableRanges.length) return;
+                const { ctx, chartArea, scales } = chart;
+                const xScale = scales.x;
+                ctx.save();
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.06)';
+                for (const [s, e] of untradableRanges) {
+                    const x1 = xScale.getPixelForValue(s);
+                    const x2 = xScale.getPixelForValue(e);
+                    const left = Math.min(x1, x2);
+                    const right = Math.max(x1, x2);
+                    ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+                }
+                ctx.restore();
+            }
+        }, {
             id: 'thresholdAndMarkers',
             afterDraw(chart) {
                 const { ctx, chartArea, scales } = chart;

@@ -104,6 +104,16 @@
                     <input type="number" id="trade-amount" value="100000" step="10000" min="0">
                     <span class="hint">每次换仓涉及的 ETF 名义金额（对应底仓 Hynix 卖出 2× 等值）</span>
                 </div>
+                <div class="param-item">
+                    <label for="window-start">交易窗口起 (HKT)</label>
+                    <input type="text" id="window-start" value="13:00" placeholder="HH:MM">
+                    <span class="hint">早于此时间的偏离不触发换仓（默认下午 13:00 起，避开早盘流动性 / 上午）</span>
+                </div>
+                <div class="param-item">
+                    <label for="window-end">交易窗口止 (HKT)</label>
+                    <input type="text" id="window-end" value="15:55" placeholder="HH:MM">
+                    <span class="hint">晚于此时间的偏离不触发（默认 15:55，留 5 分钟缓冲，避开 16:00 收市竞价）</span>
+                </div>
             </div>
             <p class="section-subtitle" style="margin-top:0.75rem; font-size:0.78rem; color:var(--color-text-muted);">滞回机制：同一方向触发一次后，需偏离回到 阈值×50% 以内才允许再次触发，避免缓慢漂移期间重复换仓。</p>
             <div class="run-section">

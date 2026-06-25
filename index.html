@@ -43,7 +43,7 @@
                     <h3>数据约定</h3>
                     <div id="baseline-inputs" class="baseline-grid"></div>
                 </div>
-                <h3 style="margin-top:1.25rem; margin-bottom:0.5rem; font-size:0.9rem;">日内分钟级数据 <span style="font-weight:400; font-size:0.78rem; color:var(--color-text-muted);">（默认展示 2026-05-21 BBG 真实数据）</span></h3>
+                <h3 style="margin-top:1.25rem; margin-bottom:0.5rem; font-size:0.9rem;">日内分钟级数据 <span style="font-weight:400; font-size:0.78rem; color:var(--color-text-muted);">（默认展示 BBG 5 个交易日：2026-06-02 / 06-04 / 06-05 / 06-08 / 06-09，分钟级）</span></h3>
             </div>
 
             <!-- Data table -->
@@ -114,6 +114,13 @@
                     <input type="text" id="window-end" value="15:55" placeholder="HH:MM">
                     <span class="hint">晚于此时间的偏离不触发（默认 15:55，留 5 分钟缓冲，避开 16:00 收市竞价）</span>
                 </div>
+                <div class="param-item param-item-check">
+                    <label class="check-label">
+                        <input type="checkbox" id="exclude-suspect" checked>
+                        <span>排除 NAV 跳点后区间</span>
+                    </label>
+                    <span class="hint">BBG 端 iNAV 单 tick &gt;1% 跳变之后的区间不构成可执行机会（短暂、且二级市价不会跟着跳）。默认勾选；取消可对比包含跳点的"理论 PnL"。</span>
+                </div>
             </div>
             <p class="section-subtitle" style="margin-top:0.75rem; font-size:0.78rem; color:var(--color-text-muted);">滞回机制：同一方向触发一次后，需偏离回到 阈值×50% 以内才允许再次触发，避免缓慢漂移期间重复换仓。</p>
             <div class="run-section">
@@ -132,6 +139,47 @@
                 <div class="chart-wrapper"><canvas id="premium-chart"></canvas></div>
                 <div class="chart-wrapper"><canvas id="pnl-chart"></canvas></div>
             </div>
+            <div id="data-quality-header" class="hidden" style="display:flex; align-items:baseline; gap:0.6rem; margin-top:1.5rem; margin-bottom:0.5rem;">
+                <h3 id="data-quality-title" style="margin:0; font-size:0.95rem;">日级数据质量诊断</h3>
+                <details class="rules-popover">
+                    <summary>跳点判定规则</summary>
+                    <div class="rules-popover-body">
+                        <h4>1. 何为"跳点"</h4>
+                        <p>BBG 发布的 <code>7709 IV</code>（iNAV）是每 15 秒一笔的连续序列。当相邻两笔之间发生 <strong>|Δ / prev| &gt; 1%</strong> 的瞬时变化时，认定为一次"跳点"。</p>
+                        <p style="color:var(--color-text-muted)">实证：杠杆 ETF 底层（海力士 + KRW 汇率）的 15s 内综合波动 ≪ 1%，超过这个阈值意味着 BBG 端做了 <em>NAV 重估 / 派息调整 / 数据补丁</em>，而非真实市场动作。</p>
+
+                        <h4>2. 检测时间窗</h4>
+                        <p>仅扫描 <strong>HKT 14:20 之前</strong>（≈ KRX 主板收盘）的 iNAV ticks。理由：</p>
+                        <ul>
+                            <li>14:20 之后主板 KP 停更，BBG Published 也开始独立漂移、不再可信；</li>
+                            <li>系统已在 14:20 之后改用我们自己的理论 iNAV（基于 KT/KP_freeze），Published 此时被旁路；</li>
+                            <li>因此 14:20 之后即便 BBG 自己跳变，也不影响交易决策。</li>
+                        </ul>
+
+                        <h4>3. 可疑区间标注</h4>
+                        <p>一旦检测到当日<strong>第一个</strong>跳点，从该 tick 起到 14:20 之间的所有数据都被标记为 <code>inavSuspect=1</code>。可视化上：</p>
+                        <ul>
+                            <li>热力图对应格子叠加<strong>深色斜纹</strong>；</li>
+                            <li>tooltip 悬停时显示 <code>⚠ NAV 跳点后</code>；</li>
+                            <li>「日级数据质量」表的"跳点"列计数。</li>
+                        </ul>
+
+                        <h4>4. 回测引擎处理</h4>
+                        <p>"策略参数"中默认勾选「<strong>排除 NAV 跳点后区间</strong>」时，引擎对 suspect 行：</p>
+                        <ul>
+                            <li>不触发换仓 — 这些 Premium 不构成可执行机会（短暂尖刺 + 二级市价不会跟随跳变）；</li>
+                            <li>不重置 arm flag — 避免虚假反向偏离重新激活信号。</li>
+                        </ul>
+
+                        <h4>5. 评分</h4>
+                        <p><strong>A</strong>：0 跳点 且 |杠杆偏差| ≤ 1%（数据干净）<br>
+                        <strong>B</strong>：≤2 跳点 且 |杠杆偏差| ≤ 3%（可用但需留意）<br>
+                        <strong>C</strong>：跳点多 或 |杠杆偏差| &gt; 3%（建议剔除当日，可能是 BBG NAV 重估 / 派息 / 数据补丁日）</p>
+                        <p style="color:var(--color-text-muted)"><em>"杠杆偏差" = 全天 iNAV% − 2 × KRX% — 真正杠杆 ETF 应≈0。</em></p>
+                    </div>
+                </details>
+            </div>
+            <div id="data-quality-container"></div>
             <h3 id="by-date-title" class="hidden" style="margin-top:1.5rem; margin-bottom:0.5rem; font-size:0.95rem;">按日汇总</h3>
             <div id="by-date-container"></div>
             <h3 style="margin-top:1.5rem; margin-bottom:0.5rem; font-size:0.95rem;">交易明细</h3>

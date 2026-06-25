@@ -1,6 +1,6 @@
 // js/main.js
 
-import { renderTable, renderBaseline, addRow, deleteLastRow, clearAll, parseData, validateData, updateBacktestShadowColumn, renderRowHTML } from './data-input.js';
+import { renderTable, renderBaseline, addRow, deleteLastRow, clearAll, parseData, validateData, updateBacktestShadowColumn, renderRowHTML, loadAndPopulateDemoData, getDataQualityFlags } from './data-input.js';
 import { runBacktest, analyzeDivergence, findChartMarkers } from './backtest-engine.js';
 import { calculateStatistics } from './statistics.js';
 import { renderCharts, destroyCharts } from './charts.js';
@@ -25,6 +25,10 @@ function getParams() {
         tradeAmount: parseFloat(document.getElementById('trade-amount').value) || 100000,
         windowStart: validHM(winStartRaw) ? winStartRaw : '13:00',
         windowEnd:   validHM(winEndRaw)   ? winEndRaw   : '15:55',
+        // When true, rows tagged as "post-NAV-jump suspect" don't trigger
+        // swaps (they remain visible in the table & charts but the engine
+        // pretends they don't exist for execution-feasibility purposes).
+        excludeSuspect: document.getElementById('exclude-suspect')?.checked ?? true,
     };
 }
 
@@ -135,11 +139,21 @@ function init() {
     updateShadowColumn();
     renderMonitorCharts();
 
-    // Initial shadow column + dashboard render from demo data
-    setTimeout(() => {
+    // Initial shadow column + dashboard render from demo data.
+    // The default dataset is fetched async from /data/demo-multi-day.json
+    // (5 BBG trading days preprocessed offline). The inline fallback
+    // already rendered above stays visible until the fetch resolves —
+    // typically <50ms on localhost but tolerant to slow/missing networks.
+    (async () => {
+        const result = await loadAndPopulateDemoData();
+        if (result.ok) {
+            console.info(`[demo] loaded multi-day dataset: ${result.rows} rows · ${result.dates.length} days (${result.dates.join(', ')})`);
+        }
+        // Always refresh dashboard from whatever rows are now in the DOM,
+        // success or failure.
         updateBacktestShadowColumn();
         refreshDashboard();
-    }, 50);
+    })();
 
     // Lazy-load the changelog from /api/changelog (auto-built from git log).
     loadChangelog();
@@ -232,6 +246,10 @@ function executeBacktest() {
     }
 
     const params = getParams();
+    // Inject suspect-row flags into params so the engine can skip rows
+    // where iNAV is post-jump (not executable). See backtest-engine.js
+    // runBacktest() for the filtering semantics.
+    params.suspectFlags = getDataQualityFlags();
 
     // Analyze divergence (used by both dashboard and stats panel)
     const analysis = analyzeDivergence(data, params.threshold);
@@ -292,7 +310,8 @@ function executeBacktest() {
     destroyCharts();
     renderCharts(data, swaps, params);
 
-    // Render swap log
+    // Render data-quality diagnostic + swap log
+    renderDataQuality(data);
     renderByDate(swaps, analysis);
     renderTradeLog(swaps);
 
@@ -390,6 +409,9 @@ function renderStatsPanel(stats) {
             <div class="stat-hint">${stats.dominant}（卖 ETF = Premium 时；买 ETF = Discount 时）</div>
         </div>`;
 
+    // Row 2 combines "单笔特征" (2 cards) + "方向分布" (1 card) into a single
+    // 3-column row to remove the large horizontal whitespace that appeared
+    // when each group occupied its own full-width row.
     panel.innerHTML = `
         ${warningHtml}
         ${winInfoHtml}
@@ -398,14 +420,134 @@ function renderStatsPanel(stats) {
             <div class="stats-grid">${summary}</div>
         </div>
         <div class="stats-section">
-            <h4 class="stats-section-title">单笔特征</h4>
-            <div class="stats-grid stats-grid-2">${perSwap}</div>
-        </div>
-        <div class="stats-section">
-            <h4 class="stats-section-title">方向分布</h4>
-            <div class="stats-grid stats-grid-1">${direction}</div>
+            <h4 class="stats-section-title">单笔特征 · 方向分布</h4>
+            <div class="stats-grid stats-grid-3">${perSwap}${direction}</div>
         </div>
     `;
+}
+
+/**
+ * Render the per-day data-quality diagnostic table.
+ *
+ * For each trading day we report:
+ *   - Rows           total normalized rows (1-min downsampled)
+ *   - KP rows        rows with hynixKP not null (= pre-14:20 KP coverage)
+ *   - FX coverage    fraction of rows with fxRate not null
+ *   - KRX %          KP first-vs-last %-change (主板净涨跌)
+ *   - iNAV %         Published iNAV first-vs-last %-change
+ *   - 偏差           |iNAV% − 2×KRX%|  (核心指标——杠杆 ETF 应满足 iNAV ≈ 2×KRX)
+ *   - 跳点           # of source 15s ticks where |Δ/prev| > 1% (suspect rows)
+ *   - 评分           A / B / C based on jump count + leverage deviation
+ *
+ * 评分规则（保守）：
+ *   A = 0 跳点 且 |偏差| ≤ 1%
+ *   B = ≤ 2 跳点 且 |偏差| ≤ 3%
+ *   C = 其余（数据建议谨慎使用）
+ */
+function renderDataQuality(data) {
+    const container = document.getElementById('data-quality-container');
+    const header = document.getElementById('data-quality-header');
+    if (!container) return;
+
+    // Group rows by date
+    const byDate = new Map();
+    for (const r of data) {
+        const k = r.date || '__single__';
+        if (!byDate.has(k)) byDate.set(k, []);
+        byDate.get(k).push(r);
+    }
+    const real = [...byDate.entries()].filter(([d]) => d && d !== '__single__');
+    if (real.length === 0) {
+        header?.classList.add('hidden');
+        container.innerHTML = '';
+        return;
+    }
+    header?.classList.remove('hidden');
+
+    const flags = getDataQualityFlags();   // Map<"date|time", 1>
+
+    const rowsHtml = real.map(([date, rows]) => {
+        const kpRows = rows.filter(r => r.hynixKP != null).length;
+        const fxRows = rows.filter(r => r.fxRate != null).length;
+        const fxPct = (fxRows / rows.length * 100).toFixed(0);
+
+        // First/last KP and iNAV (published)
+        const firstKp = rows.find(r => r.hynixKP != null)?.hynixKP;
+        const lastKp = [...rows].reverse().find(r => r.hynixKP != null)?.hynixKP;
+        const krxPct = (firstKp && lastKp) ? ((lastKp - firstKp) / firstKp * 100) : null;
+
+        const firstInav = rows.find(r => r.inavPrice != null)?.inavPrice;
+        const lastInav = [...rows].reverse().find(r => r.inavPrice != null)?.inavPrice;
+        const inavPct = (firstInav && lastInav) ? ((lastInav - firstInav) / firstInav * 100) : null;
+
+        // Deviation from 2× leverage expectation
+        const deviation = (krxPct != null && inavPct != null) ? (inavPct - 2 * krxPct) : null;
+
+        // Suspect rows (jump-tagged) for this date
+        const suspectCount = rows.reduce((n, r) => n + (flags.get(`${date}|${r.time}`) ? 1 : 0), 0);
+
+        // Score
+        let score, scoreColor;
+        const absDev = deviation != null ? Math.abs(deviation) : 0;
+        if (suspectCount === 0 && absDev <= 1.0) { score = 'A'; scoreColor = '#16a34a'; }
+        else if (suspectCount <= 2 && absDev <= 3.0) { score = 'B'; scoreColor = '#d97706'; }
+        else { score = 'C'; scoreColor = '#dc2626'; }
+
+        const fmt = (v, suffix = '') => v == null ? '—' : v.toFixed(2) + suffix;
+        const devColor = deviation == null ? '#64748b'
+                       : Math.abs(deviation) <= 1.0 ? '#16a34a'
+                       : Math.abs(deviation) <= 3.0 ? '#d97706' : '#dc2626';
+        const suspectColor = suspectCount === 0 ? '#64748b'
+                           : suspectCount <= 2 ? '#d97706' : '#dc2626';
+
+        return `
+            <tr>
+                <td>${date}</td>
+                <td>${rows.length}</td>
+                <td>${kpRows}</td>
+                <td>${fxPct}%</td>
+                <td>${fmt(krxPct, '%')}</td>
+                <td>${fmt(inavPct, '%')}</td>
+                <td style="color:${devColor};font-weight:600">${fmt(deviation, '%')}</td>
+                <td style="color:${suspectColor};font-weight:600">${suspectCount}</td>
+                <td style="color:${scoreColor};font-weight:700;text-align:center">${score}</td>
+            </tr>`;
+    }).join('');
+
+    // Aggregate suspect totals for the footer line
+    const totalRows = data.length;
+    const totalSuspect = data.reduce(
+        (n, r) => n + (flags.get(`${r.date}|${r.time}`) ? 1 : 0), 0);
+    const excludeChecked = document.getElementById('exclude-suspect')?.checked ?? true;
+    const filterStatus = excludeChecked
+        ? `<span style="color:#16a34a;font-weight:600">已启用</span>：参与回测 <strong>${totalRows - totalSuspect}</strong> 行 · 排除 <strong>${totalSuspect}</strong> 行（NAV 跳点后）`
+        : `<span style="color:#dc2626;font-weight:600">未启用</span>：${totalSuspect} 行可疑数据正在参与回测，PnL 可能虚高（可在策略参数中勾选「排除 NAV 跳点后区间」）`;
+
+    container.innerHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>分钟数</th>
+                    <th>KP分钟</th>
+                    <th>FX覆盖</th>
+                    <th>KRX涨跌</th>
+                    <th>iNAV涨跌</th>
+                    <th title="iNAV% − 2×KRX%。理想杠杆 ETF 应≈0">杠杆偏差</th>
+                    <th title="单 tick |Δ/prev|>1%（NAV重估/数据补丁）">跳点</th>
+                    <th>评分</th>
+                </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>
+        <p style="font-size:0.72rem;color:#475569;margin:0.5rem 0 0.2rem;line-height:1.5">
+            跳点过滤：${filterStatus}
+        </p>
+        <p style="font-size:0.7rem;color:#64748b;margin:0.2rem 0 0;line-height:1.5">
+            <strong>评分规则</strong>：A = 0 跳点且|杠杆偏差|≤1%（数据干净）；
+            B = ≤2 跳点且|杠杆偏差|≤3%（可用但需留意）；
+            C = 跳点多或杠杆偏差 &gt;3%（建议剔除当日或谨慎使用，可能是 BBG NAV 重估 / 派息 / 数据补丁日）。
+        </p>`;
 }
 
 function renderByDate(trades, analysis) {
@@ -1993,6 +2135,9 @@ function renderDivergenceChart(data, threshold, params) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            // Reserve top padding so the per-day "MM-DD" labels drawn in
+            // the afterDraw plugin are not clipped by the chart title.
+            layout: { padding: { top: 18 } },
             interaction: {
                 mode: 'index',
                 intersect: false,
@@ -2092,7 +2237,7 @@ function renderDivergenceChart(data, threshold, params) {
                     ctx.stroke();
                 }
 
-                // Day boundary solid lines (multi-day only)
+                // Day boundary solid lines + MM-DD label at top (multi-day only)
                 ctx.setLineDash([]);
                 ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
                 ctx.lineWidth = 1;
@@ -2104,10 +2249,40 @@ function renderDivergenceChart(data, threshold, params) {
                     ctx.stroke();
                 }
 
+                // Per-day MM-DD labels above the chart area. Pick one anchor
+                // per day (left edge of the day's index range), then write
+                // the date there. This includes the first day, whose anchor
+                // is index 0 (not in dayBoundaries which only marks transitions).
+                if (dayBoundaries.length > 0) {
+                    const anchors = [0, ...dayBoundaries];
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.textBaseline = 'bottom';
+                    ctx.textAlign = 'left';
+                    for (let i = 0; i < anchors.length; i++) {
+                        const idx = anchors[i];
+                        if (idx >= data.length) continue;
+                        const dateStr = data[idx]?.date || '';
+                        if (!dateStr) continue;
+                        const md = dateStr.length >= 10 ? dateStr.slice(5) : dateStr;
+                        const xPos = xScale.getPixelForValue(idx);
+                        // Background pill so the label is readable over plot lines
+                        const text = md;
+                        const pad = 3;
+                        const w = ctx.measureText(text).width + pad * 2;
+                        ctx.fillStyle = 'rgba(241, 245, 249, 0.92)';
+                        ctx.fillRect(xPos + 2, chartArea.top - 14, w, 13);
+                        ctx.fillStyle = '#0f172a';
+                        ctx.fillText(text, xPos + 2 + pad, chartArea.top - 2);
+                    }
+                }
+
                 // Label the first cutoff (avoid clutter when many days)
                 if (cutoffIndices.length > 0) {
                     ctx.fillStyle = '#ca8a04';
                     ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'alphabetic';
                     const xPos = xScale.getPixelForValue(cutoffIndices[0]);
                     const labelText = cutoffIndices.length > 1
                         ? `14:20 集合竞价 (×${cutoffIndices.length})`
@@ -2145,21 +2320,21 @@ function renderInavComparisonChart(data) {
     const ctx = canvas.getContext('2d');
     if (inavComparisonChart) inavComparisonChart.destroy();
 
-    // We need rows that have both official iNAV and theoretical iNAV data.
-    // Official iNAV price = row.inavPrice
-    // Theoretical price = baseInav × (1 + shadowInavChange/100)
-    //   (the `shadowInavChange` field name is kept for backward compatibility
-    //    with downstream chart code; semantically it's the locally-computed
-    //    Hynix-driven iNAV change vs the day baseline.)
-    const baseInav = data.length > 0 ? data[0].inavPrice : null;
-    if (!baseInav) {
-        canvas.parentElement.style.display = 'none';
-        inavComparisonChart = null;
-        return;
-    }
-
-    // Only show rows that have both official and shadow
-    const validRows = data.filter(r => r.inavPrice && r.shadowInavChange !== null);
+    // Two lines compared:
+    //   - 官方 iNAV  = row.inavPrice    (BBG-published 7709 IV)
+    //   - 理论 iNAV  = row.theoInav     (engine's actual decision input)
+    //
+    // theoInav is computed by data-input.js resolveDay() per the all-day
+    // formula:
+    //     Theo(t) = inavBase × (1 + 2 × (KT(t) / KP_ref(t) − 1))
+    //   where inavBase = row.inavPrice  for t ≤ 14:20
+    //                  = inav frozen at 14:20  for t > 14:20
+    //
+    // Pre-cutoff the two lines should be near-identical (Theo just nudges
+    // Published by KT/KP drift, ~bp-level). Post-cutoff the two diverge —
+    // Theo follows KT, while Published often runs off in unrelated ways.
+    // This divergence is exactly what the chart is designed to surface.
+    const validRows = data.filter(r => r.inavPrice != null && r.theoInav != null);
     if (validRows.length < 2) {
         canvas.parentElement.style.display = 'none';
         inavComparisonChart = null;
@@ -2167,12 +2342,47 @@ function renderInavComparisonChart(data) {
     }
     canvas.parentElement.style.display = '';
 
-    const labels = validRows.map(r => r.time || '');
+    // Multi-day-aware labels: prefix with MM-DD when the dataset spans
+    // multiple trading days, otherwise just HH:MM.
+    const datesSet = new Set(validRows.map(r => r.date || '').filter(Boolean));
+    const multiDay = datesSet.size > 1;
+    const labels = validRows.map(r => {
+        const time = r.time || '';
+        if (!multiDay || !r.date) return time;
+        const md = r.date.length >= 10 ? r.date.slice(5) : r.date;
+        return `${md} ${time}`;
+    });
     const officialLine = validRows.map(r => r.inavPrice);
-    const shadowLine = validRows.map(r => baseInav * (1 + r.shadowInavChange / 100));
+    const shadowLine = validRows.map(r => r.theoInav);
 
-    // Find 14:20 cutoff
-    const cutoffIdx = validRows.findIndex(r => r.time && r.time > '14:20');
+    // 14:20 cutoff index per day (multi-day) + day-boundary indices for
+    // drawing per-day "MM-DD" labels above the chart.
+    const cutoffIndices = [];
+    const dayBoundaries = [];
+    let prevDate = null;
+    for (let i = 0; i < validRows.length; i++) {
+        const r = validRows[i];
+        if (r.date !== prevDate) {
+            if (prevDate !== null) dayBoundaries.push(i);
+            prevDate = r.date;
+        }
+    }
+    // Per-day cutoff: walk each day's slice and find first row > 14:20.
+    {
+        const dayStarts = [0, ...dayBoundaries, validRows.length];
+        for (let g = 0; g < dayStarts.length - 1; g++) {
+            const s = dayStarts[g], e = dayStarts[g + 1];
+            for (let i = s; i < e; i++) {
+                if (validRows[i].time && validRows[i].time > '14:20') {
+                    cutoffIndices.push(i);
+                    break;
+                }
+            }
+        }
+    }
+    // Backwards-compat single-cutoff (used by zoom-mode logic above which
+    // computes "morningRows" via slice(0, cutoffIdx)).
+    const cutoffIdx = cutoffIndices.length > 0 ? cutoffIndices[0] : -1;
 
     // Zoom-mode Y range: focus on the morning-session segment so the small
     // Theo-vs-Published dispersion (typically ~0.1 HKD ≈ 20 ticks) is visible.
@@ -2226,6 +2436,7 @@ function renderInavComparisonChart(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: { padding: { top: 18 } },
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 title: {
@@ -2254,20 +2465,60 @@ function renderInavComparisonChart(data) {
         plugins: [{
             id: 'comparisonCutoff',
             afterDraw(chart) {
-                if (cutoffIdx <= 0) return;
                 const { ctx, chartArea, scales } = chart;
-                const xPos = scales.x.getPixelForValue(cutoffIdx);
                 ctx.save();
+
+                // Per-day 14:20 cutoff lines
                 ctx.setLineDash([4, 4]);
                 ctx.strokeStyle = '#ca8a04';
                 ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.moveTo(xPos, chartArea.top);
-                ctx.lineTo(xPos, chartArea.bottom);
-                ctx.stroke();
-                ctx.fillStyle = '#ca8a04';
-                ctx.font = '11px sans-serif';
-                ctx.fillText('14:20', xPos + 4, chartArea.top + 14);
+                for (const idx of cutoffIndices) {
+                    const xPos = scales.x.getPixelForValue(idx);
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, chartArea.top);
+                    ctx.lineTo(xPos, chartArea.bottom);
+                    ctx.stroke();
+                }
+                if (cutoffIndices.length > 0) {
+                    ctx.fillStyle = '#ca8a04';
+                    ctx.font = '11px sans-serif';
+                    ctx.textBaseline = 'alphabetic';
+                    ctx.textAlign = 'left';
+                    const xPos = scales.x.getPixelForValue(cutoffIndices[0]);
+                    ctx.fillText('14:20', xPos + 4, chartArea.top + 14);
+                }
+
+                // Day-boundary solid lines + MM-DD labels at top
+                if (dayBoundaries.length > 0) {
+                    ctx.setLineDash([]);
+                    ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
+                    ctx.lineWidth = 1;
+                    for (const idx of dayBoundaries) {
+                        const xPos = scales.x.getPixelForValue(idx);
+                        ctx.beginPath();
+                        ctx.moveTo(xPos, chartArea.top);
+                        ctx.lineTo(xPos, chartArea.bottom);
+                        ctx.stroke();
+                    }
+                    // MM-DD labels: one per day, anchored at the day's left edge.
+                    const anchors = [0, ...dayBoundaries];
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.textBaseline = 'bottom';
+                    ctx.textAlign = 'left';
+                    for (const idx of anchors) {
+                        if (idx >= validRows.length) continue;
+                        const dateStr = validRows[idx]?.date || '';
+                        if (!dateStr) continue;
+                        const md = dateStr.length >= 10 ? dateStr.slice(5) : dateStr;
+                        const xPos = scales.x.getPixelForValue(idx);
+                        const pad = 3;
+                        const w = ctx.measureText(md).width + pad * 2;
+                        ctx.fillStyle = 'rgba(241, 245, 249, 0.92)';
+                        ctx.fillRect(xPos + 2, chartArea.top - 14, w, 13);
+                        ctx.fillStyle = '#0f172a';
+                        ctx.fillText(md, xPos + 2 + pad, chartArea.top - 2);
+                    }
+                }
                 ctx.restore();
             }
         }],
@@ -2287,8 +2538,12 @@ function renderInavValidationChart(data) {
     const ctx = canvas.getContext('2d');
     if (inavValidationChart) inavValidationChart.destroy();
 
-    // Filter rows that have BOTH official and theoretical iNAV changes
-    const validRows = data.filter(r => r.officialInavChange !== null && r.shadowInavChange !== null);
+    // Filter rows that have BOTH official Published iNAV and engine Theo.
+    // Deviation series = (Theo − Published) / Published × 100, plotted in %.
+    // Pre-cutoff (≤14:20) this is just the leverage drift term 2×(KT/KP−1).
+    // Post-cutoff Theo is computed off the 14:20-frozen Published, so this
+    // line shows how far BBG-published runs from a sensible KT-driven mark.
+    const validRows = data.filter(r => r.inavPrice != null && r.theoInav != null);
 
     if (validRows.length < 2) {
         canvas.parentElement.style.display = 'none';
@@ -2297,11 +2552,43 @@ function renderInavValidationChart(data) {
     }
     canvas.parentElement.style.display = '';
 
-    const labels = validRows.map(r => r.time || '');
-    const deviations = validRows.map(r => r.shadowInavChange - r.officialInavChange);
+    // Multi-day-aware labels (MM-DD HH:MM when spanning multiple days)
+    const datesSet = new Set(validRows.map(r => r.date || '').filter(Boolean));
+    const multiDay = datesSet.size > 1;
+    const labels = validRows.map(r => {
+        const time = r.time || '';
+        if (!multiDay || !r.date) return time;
+        const md = r.date.length >= 10 ? r.date.slice(5) : r.date;
+        return `${md} ${time}`;
+    });
+    const deviations = validRows.map(r => (r.theoInav - r.inavPrice) / r.inavPrice * 100);
 
-    // Find 14:20 cutoff index for vertical line
-    const cutoffIdx = validRows.findIndex(r => r.time && r.time > '14:20');
+    // Per-day 14:20 cutoff indices + day-boundary indices.
+    const cutoffIndices = [];
+    const dayBoundaries = [];
+    let prevDate = null;
+    for (let i = 0; i < validRows.length; i++) {
+        if (validRows[i].date !== prevDate) {
+            if (prevDate !== null) dayBoundaries.push(i);
+            prevDate = validRows[i].date;
+        }
+    }
+    {
+        const dayStarts = [0, ...dayBoundaries, validRows.length];
+        for (let g = 0; g < dayStarts.length - 1; g++) {
+            const s = dayStarts[g], e = dayStarts[g + 1];
+            for (let i = s; i < e; i++) {
+                if (validRows[i].time && validRows[i].time > '14:20') {
+                    cutoffIndices.push(i);
+                    break;
+                }
+            }
+        }
+    }
+    // Backwards-compat: segment.borderColor uses cutoffIdx (first day's
+    // cutoff) to color the post-14:20 segment red. For multi-day, change
+    // logic to "row's own time > 14:20" which is per-row aware.
+    const cutoffIdx = cutoffIndices.length > 0 ? cutoffIndices[0] : -1;
 
     inavValidationChart = new Chart(ctx, {
         type: 'line',
@@ -2316,8 +2603,11 @@ function renderInavValidationChart(data) {
                 pointHitRadius: 10,
                 segment: {
                     borderColor: (ctx) => {
+                        // Color the segment red iff its right-end row is
+                        // post-14:20 (per-day, multi-day-aware).
                         const idx = ctx.p1DataIndex;
-                        return (cutoffIdx > 0 && idx >= cutoffIdx) ? '#dc2626' : '#16a34a';
+                        const t = validRows[idx]?.time || '';
+                        return t > '14:20' ? '#dc2626' : '#16a34a';
                     }
                 },
                 fill: {
@@ -2329,6 +2619,7 @@ function renderInavValidationChart(data) {
         },
         options: {
             responsive: true,
+            layout: { padding: { top: 18 } },
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 title: { display: true, text: '官方 iNAV vs 理论 iNAV 偏差（验证 iNAV 准确性）' },
@@ -2350,21 +2641,63 @@ function renderInavValidationChart(data) {
         plugins: [{
             id: 'inavCutoffLine',
             afterDraw(chart) {
-                if (cutoffIdx <= 0) return;
                 const { ctx, chartArea, scales } = chart;
                 const xScale = scales.x;
-                const xPos = xScale.getPixelForValue(cutoffIdx);
                 ctx.save();
+
+                // Per-day 14:20 cutoff dashed lines
                 ctx.setLineDash([4, 4]);
                 ctx.strokeStyle = '#ca8a04';
                 ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.moveTo(xPos, chartArea.top);
-                ctx.lineTo(xPos, chartArea.bottom);
-                ctx.stroke();
-                ctx.fillStyle = '#ca8a04';
-                ctx.font = '11px sans-serif';
-                ctx.fillText('14:20 集合竞价', xPos + 4, chartArea.top + 14);
+                for (const idx of cutoffIndices) {
+                    const xPos = xScale.getPixelForValue(idx);
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, chartArea.top);
+                    ctx.lineTo(xPos, chartArea.bottom);
+                    ctx.stroke();
+                }
+                if (cutoffIndices.length > 0) {
+                    ctx.fillStyle = '#ca8a04';
+                    ctx.font = '11px sans-serif';
+                    ctx.textBaseline = 'alphabetic';
+                    ctx.textAlign = 'left';
+                    const xPos = xScale.getPixelForValue(cutoffIndices[0]);
+                    const labelText = cutoffIndices.length > 1
+                        ? `14:20 集合竞价 (×${cutoffIndices.length})`
+                        : '14:20 集合竞价';
+                    ctx.fillText(labelText, xPos + 4, chartArea.top + 14);
+                }
+
+                // Day-boundary lines + MM-DD top labels
+                if (dayBoundaries.length > 0) {
+                    ctx.setLineDash([]);
+                    ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
+                    ctx.lineWidth = 1;
+                    for (const idx of dayBoundaries) {
+                        const xPos = xScale.getPixelForValue(idx);
+                        ctx.beginPath();
+                        ctx.moveTo(xPos, chartArea.top);
+                        ctx.lineTo(xPos, chartArea.bottom);
+                        ctx.stroke();
+                    }
+                    const anchors = [0, ...dayBoundaries];
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.textBaseline = 'bottom';
+                    ctx.textAlign = 'left';
+                    for (const idx of anchors) {
+                        if (idx >= validRows.length) continue;
+                        const dateStr = validRows[idx]?.date || '';
+                        if (!dateStr) continue;
+                        const md = dateStr.length >= 10 ? dateStr.slice(5) : dateStr;
+                        const xPos = xScale.getPixelForValue(idx);
+                        const pad = 3;
+                        const w = ctx.measureText(md).width + pad * 2;
+                        ctx.fillStyle = 'rgba(241, 245, 249, 0.92)';
+                        ctx.fillRect(xPos + 2, chartArea.top - 14, w, 13);
+                        ctx.fillStyle = '#0f172a';
+                        ctx.fillText(md, xPos + 2 + pad, chartArea.top - 2);
+                    }
+                }
                 ctx.restore();
             }
         }],

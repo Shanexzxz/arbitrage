@@ -1,6 +1,7 @@
 // js/charts.js
 
 import { findChartMarkers } from './backtest-engine.js';
+import { getDataQualityFlags } from './data-input.js';
 
 let equityChart = null;
 let premiumChart = null;
@@ -292,24 +293,47 @@ function renderTriggerHeatmap(data, trades, params) {
         markers.push({ dayIdx, binIdx: bIdx, direction: t.direction });
     }
 
-    // ----- Color scale (white → yellow → orange → red) for |premium|. -----
-    // Cap at 3% so 1.5%-2% triggers map to a strong but not maxed-out color.
-    const PREM_CAP = 3.0;
-    const colorFor = (absPrem) => {
-        const t = Math.min(absPrem / PREM_CAP, 1);
-        // Three-stop gradient
-        if (t < 0.5) {
-            // white → yellow
-            const k = t / 0.5;
-            return `rgb(${255}, ${Math.round(255 - k * 30)}, ${Math.round(255 - k * 200)})`;
+    // ----- Diverging color scale (BLUE ← white → RED) for SIGNED premium.
+    // Premium > 0 (ETF over Theo, sell-ETF setup) maps to RED; premium < 0
+    // (ETF under Theo, buy-ETF setup) maps to BLUE; near-zero → near-white.
+    // Symmetric scale capped at PREM_CAP so extreme outliers saturate
+    // instead of compressing the rest. Threshold band (where the engine
+    // would actually fire) gets a deeper, more saturated tail.
+    const PREM_CAP = 4.0;            // saturation point (≈ data p90)
+    const userThreshold = params?.threshold ?? 2.0;
+
+    // Map normalized |x| in [0,1] to a (r,g,b) tuple along the chosen
+    // hue. We use 3 stops: white (0) → mid color (threshold) → deep
+    // color (cap). This gives an obvious visual jump right at the
+    // user's trigger threshold.
+    const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+    const colorFor = (signedPrem) => {
+        const sign = signedPrem >= 0 ? 1 : -1;
+        const norm = Math.min(Math.abs(signedPrem) / PREM_CAP, 1);
+        // Sub-threshold (calm zone): white → pale tint
+        // Above-threshold (action zone): pale → deep
+        const tFrac = userThreshold / PREM_CAP;       // where threshold sits in [0,1]
+        let r, g, b;
+        if (sign > 0) {
+            // RED side: white(255,255,255) → light red(254,224,210) → deep red(165,15,21)
+            if (norm <= tFrac) {
+                const k = tFrac > 0 ? norm / tFrac : 0;
+                r = lerp(255, 254, k); g = lerp(255, 224, k); b = lerp(255, 210, k);
+            } else {
+                const k = (norm - tFrac) / (1 - tFrac);
+                r = lerp(254, 165, k); g = lerp(224,  15, k); b = lerp(210,  21, k);
+            }
         } else {
-            // yellow → orange → red
-            const k = (t - 0.5) / 0.5;
-            const r = 255;
-            const g = Math.round(225 - k * 187);
-            const b = Math.round(55 - k * 55);
-            return `rgb(${r}, ${g}, ${b})`;
+            // BLUE side: white → light blue(208,225,242) → deep blue(33,69,148)
+            if (norm <= tFrac) {
+                const k = tFrac > 0 ? norm / tFrac : 0;
+                r = lerp(255, 208, k); g = lerp(255, 225, k); b = lerp(255, 242, k);
+            } else {
+                const k = (norm - tFrac) / (1 - tFrac);
+                r = lerp(208,  33, k); g = lerp(225,  69, k); b = lerp(242, 148, k);
+            }
         }
+        return `rgb(${r},${g},${b})`;
     };
 
     // ----- Trading-window grey overlay -----
@@ -331,12 +355,18 @@ function renderTriggerHeatmap(data, trades, params) {
     canvas.height = cssH * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Padding (room for axis labels on left & top)
-    const padL = 70, padT = 36, padR = 12, padB = 28;
+    // Padding. After axis swap (X = days, Y = time bins) we no longer need
+    // a wide left gutter for date labels — they fit under the X axis. We
+    // do need a wider left gutter for "HH:MM" time labels, though, so
+    // padL stays around 50. padB increases slightly for the date row.
+    // padT bumped to 56 to make room for the colorbar legend below the
+    // header text.
+    const padL = 52, padT = 56, padR = 12, padB = 28;
     const gridW = cssW - padL - padR;
     const gridH = cssH - padT - padB;
-    const cellW = gridW / nBins;
-    const cellH = gridH / Math.max(nDays, 1);
+    // X = days, Y = time bins.
+    const cellW = gridW / Math.max(nDays, 1);
+    const cellH = gridH / nBins;
 
     ctx.clearRect(0, 0, cssW, cssH);
 
@@ -348,13 +378,78 @@ function renderTriggerHeatmap(data, trades, params) {
     ctx.fillText('按日 × 时段 触发热力图', padL, 6);
     ctx.font = '10px -apple-system, "Segoe UI", sans-serif';
     ctx.fillStyle = '#64748b';
-    ctx.fillText(`颜色 = |偏离%|（封顶 ${PREM_CAP}%）　▲ 卖 ETF　▼ 买 ETF　灰底 = 窗口外`, padL, 22);
+    ctx.fillText(`■ 红 = Premium (ETF>Theo)　■ 蓝 = Discount (ETF<Theo)　▲▼ 触发　灰底 窗口外　斜纹 NAV 跳点存疑`, padL, 22);
 
-    // ----- Cells -----
+    // ----- Color legend bar -----
+    // Horizontal gradient from -CAP (deep blue) → 0 (white) → +CAP (deep red)
+    // with vertical tick marks at -CAP / -threshold / 0 / +threshold / +CAP.
+    {
+        const barX = padL, barY = 38, barW = Math.min(360, gridW * 0.5), barH = 8;
+        const N = Math.round(barW);
+        for (let i = 0; i < N; i++) {
+            const t = i / (N - 1);                       // 0..1
+            const signedPrem = (t * 2 - 1) * PREM_CAP;   // -CAP..+CAP
+            ctx.fillStyle = colorFor(signedPrem);
+            ctx.fillRect(barX + i, barY, 1, barH);
+        }
+        // Border
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 0.6;
+        ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+        // Tick marks + labels
+        const tick = (signedPrem, label, weight = 'normal') => {
+            const t = (signedPrem / PREM_CAP + 1) / 2;
+            const x = barX + t * barW;
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, barY - 2);
+            ctx.lineTo(x, barY + barH + 2);
+            ctx.stroke();
+            ctx.fillStyle = '#475569';
+            ctx.font = `${weight === 'bold' ? 'bold ' : ''}9px -apple-system, "Segoe UI", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText(label, x, barY + barH + 3);
+        };
+        tick(-PREM_CAP, `−${PREM_CAP}%`);
+        tick(-userThreshold, `−${userThreshold}%`, 'bold');
+        tick(0, '0');
+        tick(+userThreshold, `+${userThreshold}%`, 'bold');
+        tick(+PREM_CAP, `+${PREM_CAP}%`);
+        // Label "color = signed premium %"
+        ctx.fillStyle = '#64748b';
+        ctx.font = '9px -apple-system, "Segoe UI", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('色阶 = ETF − Theo (%)', barX + barW + 10, barY + barH / 2);
+    }
+
+    // ----- Suspect-cell precomputation -----
+    // For each (day, bin) check whether ANY underlying minute in that bin
+    // carries the suspect flag. If yes, draw diagonal hatching overlay
+    // after the color fill so the user sees the cell value but is warned
+    // the iNAV used to derive it came from a post-jump regime.
+    const suspectFlags = getDataQualityFlags();
+    const suspectCell = Array.from({ length: nDays }, () => new Array(nBins).fill(false));
+    if (suspectFlags && suspectFlags.size > 0) {
+        for (let d = 0; d < nDays; d++) {
+            const dayKey = days[d];
+            const dayRows = dayMap.get(dayKey);
+            for (const r of dayRows) {
+                if (suspectFlags.get(`${dayKey}|${r.time}`)) {
+                    const b = timeToBin(r.time);
+                    if (b >= 0) suspectCell[d][b] = true;
+                }
+            }
+        }
+    }
+
+    // ----- Cells (X = day index, Y = time bin index) -----
     for (let d = 0; d < nDays; d++) {
         for (let b = 0; b < nBins; b++) {
-            const x = padL + b * cellW;
-            const y = padT + d * cellH;
+            const x = padL + d * cellW;
+            const y = padT + b * cellH;
             // Draw window-out grey background for every cell first
             if (!inWindow(b)) {
                 ctx.fillStyle = 'rgba(15, 23, 42, 0.06)';
@@ -362,8 +457,26 @@ function renderTriggerHeatmap(data, trades, params) {
             }
             const cell = cells[d][b];
             if (cell != null) {
-                ctx.fillStyle = colorFor(cell.absPrem);
+                ctx.fillStyle = colorFor(cell.signedPrem);
                 ctx.fillRect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
+            }
+            // Suspect overlay: diagonal hatching pattern
+            if (suspectCell[d][b]) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
+                ctx.clip();
+                ctx.strokeStyle = 'rgba(15, 23, 42, 0.45)';
+                ctx.lineWidth = 0.8;
+                const step = 4;
+                const diag = cellW + cellH;
+                for (let s = -cellH; s < diag; s += step) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + s, y);
+                    ctx.lineTo(x + s + cellH, y + cellH);
+                    ctx.stroke();
+                }
+                ctx.restore();
             }
         }
     }
@@ -373,8 +486,8 @@ function renderTriggerHeatmap(data, trades, params) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const m of markers) {
-        const x = padL + m.binIdx * cellW;
-        const y = padT + m.dayIdx * cellH;
+        const x = padL + m.dayIdx * cellW;
+        const y = padT + m.binIdx * cellH;
         // Black border to highlight the swap cell
         ctx.strokeStyle = '#0f172a';
         ctx.lineWidth = 1.5;
@@ -385,38 +498,40 @@ function renderTriggerHeatmap(data, trades, params) {
         ctx.fillText(glyph, x + cellW / 2, y + cellH / 2);
     }
 
-    // ----- Y-axis: day labels -----
+    // ----- Y-axis: time labels (every hour, on the left) -----
     ctx.fillStyle = '#475569';
     ctx.font = '10px -apple-system, "Segoe UI", sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
+    for (let h = 10; h <= 16; h++) {
+        const tot = h * 60;
+        if (tot < START_MIN || tot > END_MIN) continue;
+        const b = (tot - START_MIN) / BIN_MIN;
+        const y = padT + b * cellH;
+        ctx.fillText(`${String(h).padStart(2, '0')}:00`, padL - 6, y);
+        // tick mark on the left edge
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padL - 3, y);
+        ctx.lineTo(padL, y);
+        ctx.stroke();
+    }
+
+    // ----- X-axis: day labels (under the grid) -----
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#475569';
     for (let d = 0; d < nDays; d++) {
         const dayKey = days[d];
         const label = dayKey === '__single__'
             ? '(单日)'
             : (dayKey.length >= 10 ? dayKey.slice(5) : dayKey);  // MM-DD
-        ctx.fillText(label, padL - 6, padT + d * cellH + cellH / 2);
+        ctx.fillText(label, padL + d * cellW + cellW / 2, padT + gridH + 4);
     }
 
-    // ----- X-axis: time labels (every hour) -----
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = '#475569';
-    for (let h = 10; h <= 16; h++) {
-        const tot = h * 60;
-        if (tot < START_MIN || tot > END_MIN) continue;
-        const b = (tot - START_MIN) / BIN_MIN;
-        const x = padL + b * cellW;
-        ctx.fillText(`${String(h).padStart(2, '0')}:00`, x, padT + gridH + 4);
-        // tick mark
-        ctx.strokeStyle = '#cbd5e1';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, padT + gridH);
-        ctx.lineTo(x, padT + gridH + 3);
-        ctx.stroke();
-    }
-    // Also mark the trading window edges with amber dashed lines
+    // Trading-window edges as amber dashed HORIZONTAL lines (constant time
+    // = horizontal line in the swapped layout).
     ctx.save();
     ctx.setLineDash([4, 3]);
     ctx.strokeStyle = '#ca8a04';
@@ -426,10 +541,10 @@ function renderTriggerHeatmap(data, trades, params) {
         const tot = h * 60 + m;
         if (tot < START_MIN || tot > END_MIN) continue;
         const b = (tot - START_MIN) / BIN_MIN;
-        const x = padL + b * cellW;
+        const y = padT + b * cellH;
         ctx.beginPath();
-        ctx.moveTo(x, padT);
-        ctx.lineTo(x, padT + gridH);
+        ctx.moveTo(padL, y);
+        ctx.lineTo(padL + gridW, y);
         ctx.stroke();
     }
     ctx.restore();
@@ -448,8 +563,9 @@ function renderTriggerHeatmap(data, trades, params) {
         const rect = canvas.getBoundingClientRect();
         const mx = ev.clientX - rect.left;
         const my = ev.clientY - rect.top;
-        const b = Math.floor((mx - padL) / cellW);
-        const d = Math.floor((my - padT) / cellH);
+        // X = day index, Y = time-bin index (axes were swapped).
+        const d = Math.floor((mx - padL) / cellW);
+        const b = Math.floor((my - padT) / cellH);
         if (b < 0 || b >= nBins || d < 0 || d >= nDays) {
             tooltip.style.display = 'none';
             return;
@@ -461,6 +577,7 @@ function renderTriggerHeatmap(data, trades, params) {
         const dayKey = days[d];
         const dateLabel = dayKey === '__single__' ? '' : dayKey;
         const winNote = inWindow(b) ? '' : ' · 窗口外';
+        const suspectNote = suspectCell[d][b] ? ' · ⚠ NAV 跳点后' : '';
         const fired = markers.find(m => m.dayIdx === d && m.binIdx === b);
         const swapNote = fired
             ? (fired.direction === 'sell_etf_buy_stock' ? ' · ▲ 卖 ETF 换仓' : ' · ▼ 买 ETF 换仓')
@@ -468,9 +585,13 @@ function renderTriggerHeatmap(data, trades, params) {
         const premLine = cell
             ? `区间最大|偏离| = ${cell.absPrem.toFixed(3)}% (${cell.signedPrem >= 0 ? '+' : ''}${cell.signedPrem.toFixed(3)}%)`
             : '无数据';
+        const suspectExplain = suspectCell[d][b]
+            ? '<div style="color:#fbbf24;font-size:0.7rem;margin-top:0.15rem">数据存疑：本格涉及单 tick &gt;1% 的 iNAV 跳变之后区间</div>'
+            : '';
         tooltip.innerHTML = `
-            <div class="heatmap-tooltip-head">${dateLabel} ${timeStr}${winNote}</div>
+            <div class="heatmap-tooltip-head">${dateLabel} ${timeStr}${winNote}${suspectNote}</div>
             <div>${premLine}</div>
+            ${suspectExplain}
             ${swapNote ? `<div class="heatmap-tooltip-swap">${swapNote}</div>` : ''}
         `;
         tooltip.style.display = 'block';

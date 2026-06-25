@@ -50,430 +50,16 @@ export function getPrevKrxClose(date) {
 }
 export function clearPrevKrxClose() { prevKrxCloseByDate = new Map(); }
 
-// Demo data from actual BBG export (2026-05-21), 1-minute granularity (420 rows, 09:30-16:29).
-// 与"导入 BBG Excel"得到的结果完全一致：iNAV 取每分钟首个 15s tick 作为快照，
-// ETF/KP/KT/FX 用 LOCF 对齐到该时刻。FX 已从 KRW/USD（~1500）按 USD/HKD=7.8 换算成 HKD/KRW（~0.0052）。
+// Fallback demo data — small inline sample shown if the network fetch of
+// data/demo-multi-day.json fails. The real default dataset (5 trading days
+// from the BBG "7709 vs 2x ETF" export) is loaded async via
+// loadAndPopulateDemoData() at startup.
 const DEMO_DATA = [
-    { date: '2026-05-21', time: '09:30', inavPrice: '93.8025', hynixKP: '1897000', hynixKT: '1897000', fxRate: '0.005199', etfPrice: '94.10' },
-    { date: '2026-05-21', time: '09:31', inavPrice: '94.2730', hynixKP: '1904000', hynixKT: '1904000', fxRate: '0.005199', etfPrice: '94.70' },
-    { date: '2026-05-21', time: '09:32', inavPrice: '94.3654', hynixKP: '1905000', hynixKT: '1905000', fxRate: '0.005200', etfPrice: '94.74' },
-    { date: '2026-05-21', time: '09:33', inavPrice: '94.8152', hynixKP: '1909000', hynixKT: '1909000', fxRate: '0.005198', etfPrice: '95.24' },
-    { date: '2026-05-21', time: '09:34', inavPrice: '94.6300', hynixKP: '1909000', hynixKT: '1909000', fxRate: '0.005198', etfPrice: '94.98' },
-    { date: '2026-05-21', time: '09:35', inavPrice: '94.5392', hynixKP: '1907000', hynixKT: '1908000', fxRate: '0.005198', etfPrice: '94.90' },
-    { date: '2026-05-21', time: '09:36', inavPrice: '94.5402', hynixKP: '1907000', hynixKT: '1907000', fxRate: '0.005197', etfPrice: '94.86' },
-    { date: '2026-05-21', time: '09:37', inavPrice: '94.8152', hynixKP: '1910000', hynixKT: '1909000', fxRate: '0.005198', etfPrice: '94.92' },
-    { date: '2026-05-21', time: '09:38', inavPrice: '94.7245', hynixKP: '1907000', hynixKT: '1908000', fxRate: '0.005198', etfPrice: '94.88' },
-    { date: '2026-05-21', time: '09:39', inavPrice: '94.9109', hynixKP: '1910000', hynixKT: '1910000', fxRate: '0.005199', etfPrice: '95.02' },
-    { date: '2026-05-21', time: '09:40', inavPrice: '94.5432', hynixKP: '1905000', hynixKT: '1905000', fxRate: '0.005199', etfPrice: '94.62' },
-    { date: '2026-05-21', time: '09:41', inavPrice: '94.4556', hynixKP: '1906500', hynixKT: '1906000', fxRate: '0.005200', etfPrice: '94.66' },
-    { date: '2026-05-21', time: '09:42', inavPrice: '93.9015', hynixKP: '1900500', hynixKT: '1900000', fxRate: '0.005199', etfPrice: '94.02' },
-    { date: '2026-05-21', time: '09:43', inavPrice: '93.9025', hynixKP: '1902000', hynixKT: '1900000', fxRate: '0.005198', etfPrice: '94.12' },
-    { date: '2026-05-21', time: '09:44', inavPrice: '93.9893', hynixKP: '1901000', hynixKT: '1901000', fxRate: '0.005198', etfPrice: '94.18' },
-    { date: '2026-05-21', time: '09:45', inavPrice: '93.9899', hynixKP: '1900000', hynixKT: '1901000', fxRate: '0.005198', etfPrice: '94.14' },
-    { date: '2026-05-21', time: '09:46', inavPrice: '93.8006', hynixKP: '1899000', hynixKT: '1899000', fxRate: '0.005198', etfPrice: '94.06' },
-    { date: '2026-05-21', time: '09:47', inavPrice: '93.8000', hynixKP: '1899000', hynixKT: '1899000', fxRate: '0.005197', etfPrice: '93.94' },
-    { date: '2026-05-21', time: '09:48', inavPrice: '93.6135', hynixKP: '1898000', hynixKT: '1897000', fxRate: '0.005197', etfPrice: '93.76' },
-    { date: '2026-05-21', time: '09:49', inavPrice: '93.7948', hynixKP: '1900000', hynixKT: '1900000', fxRate: '0.005196', etfPrice: '93.88' },
-    { date: '2026-05-21', time: '09:50', inavPrice: '93.8768', hynixKP: '1900000', hynixKT: '1899000', fxRate: '0.005192', etfPrice: '93.90' },
-    { date: '2026-05-21', time: '09:51', inavPrice: '93.8730', hynixKP: '1900000', hynixKT: '1900000', fxRate: '0.005191', etfPrice: '93.94' },
-    { date: '2026-05-21', time: '09:52', inavPrice: '94.0551', hynixKP: '1902000', hynixKT: '1903000', fxRate: '0.005192', etfPrice: '94.20' },
-    { date: '2026-05-21', time: '09:53', inavPrice: '93.9645', hynixKP: '1901000', hynixKT: '1902000', fxRate: '0.005192', etfPrice: '93.96' },
-    { date: '2026-05-21', time: '09:54', inavPrice: '93.4069', hynixKP: '1896000', hynixKT: '1896000', fxRate: '0.005188', etfPrice: '93.38' },
-    { date: '2026-05-21', time: '09:55', inavPrice: '92.7595', hynixKP: '1888000', hynixKT: '1888000', fxRate: '0.005185', etfPrice: '92.82' },
-    { date: '2026-05-21', time: '09:56', inavPrice: '92.8491', hynixKP: '1889000', hynixKT: '1889000', fxRate: '0.005185', etfPrice: '92.90' },
-    { date: '2026-05-21', time: '09:57', inavPrice: '92.7613', hynixKP: '1888000', hynixKT: '1888000', fxRate: '0.005187', etfPrice: '92.78' },
-    { date: '2026-05-21', time: '09:58', inavPrice: '93.5927', hynixKP: '1898000', hynixKT: '1898000', fxRate: '0.005190', etfPrice: '93.58' },
-    { date: '2026-05-21', time: '09:59', inavPrice: '93.6852', hynixKP: '1900000', hynixKT: '1900000', fxRate: '0.005190', etfPrice: '93.80' },
-    { date: '2026-05-21', time: '10:00', inavPrice: '93.5937', hynixKP: '1901000', hynixKT: '1900000', fxRate: '0.005189', etfPrice: '94.14' },
-    { date: '2026-05-21', time: '10:01', inavPrice: '93.7843', hynixKP: '1900000', hynixKT: '1900000', fxRate: '0.005189', etfPrice: '94.00' },
-    { date: '2026-05-21', time: '10:02', inavPrice: '94.1510', hynixKP: '1904000', hynixKT: '1904000', fxRate: '0.005190', etfPrice: '94.36' },
-    { date: '2026-05-21', time: '10:03', inavPrice: '94.3340', hynixKP: '1903000', hynixKT: '1903000', fxRate: '0.005190', etfPrice: '94.22' },
-    { date: '2026-05-21', time: '10:04', inavPrice: '94.2435', hynixKP: '1905000', hynixKT: '1905000', fxRate: '0.005191', etfPrice: '94.40' },
-    { date: '2026-05-21', time: '10:05', inavPrice: '94.4255', hynixKP: '1906000', hynixKT: '1906000', fxRate: '0.005191', etfPrice: '94.44' },
-    { date: '2026-05-21', time: '10:06', inavPrice: '94.6133', hynixKP: '1908000', hynixKT: '1908000', fxRate: '0.005191', etfPrice: '94.78' },
-    { date: '2026-05-21', time: '10:07', inavPrice: '94.6178', hynixKP: '1909000', hynixKT: '1909000', fxRate: '0.005192', etfPrice: '94.90' },
-    { date: '2026-05-21', time: '10:08', inavPrice: '94.7016', hynixKP: '1909000', hynixKT: '1909000', fxRate: '0.005192', etfPrice: '94.92' },
-    { date: '2026-05-21', time: '10:09', inavPrice: '94.7957', hynixKP: '1910000', hynixKT: '1910000', fxRate: '0.005192', etfPrice: '95.06' },
-    { date: '2026-05-21', time: '10:10', inavPrice: '94.9757', hynixKP: '1913000', hynixKT: '1913000', fxRate: '0.005192', etfPrice: '95.22' },
-    { date: '2026-05-21', time: '10:11', inavPrice: '95.0724', hynixKP: '1913000', hynixKT: '1913000', fxRate: '0.005192', etfPrice: '95.12' },
-    { date: '2026-05-21', time: '10:12', inavPrice: '95.0723', hynixKP: '1912000', hynixKT: '1913000', fxRate: '0.005192', etfPrice: '95.10' },
-    { date: '2026-05-21', time: '10:13', inavPrice: '94.9767', hynixKP: '1913000', hynixKT: '1913000', fxRate: '0.005191', etfPrice: '95.08' },
-    { date: '2026-05-21', time: '10:14', inavPrice: '94.5187', hynixKP: '1907000', hynixKT: '1907000', fxRate: '0.005190', etfPrice: '94.78' },
-    { date: '2026-05-21', time: '10:15', inavPrice: '94.7949', hynixKP: '1911000', hynixKT: '1911000', fxRate: '0.005191', etfPrice: '95.00' },
-    { date: '2026-05-21', time: '10:16', inavPrice: '94.9748', hynixKP: '1913000', hynixKT: '1913000', fxRate: '0.005192', etfPrice: '95.28' },
-    { date: '2026-05-21', time: '10:17', inavPrice: '95.0628', hynixKP: '1915000', hynixKT: '1914000', fxRate: '0.005191', etfPrice: '95.46' },
-    { date: '2026-05-21', time: '10:18', inavPrice: '95.4321', hynixKP: '1918000', hynixKT: '1918000', fxRate: '0.005191', etfPrice: '95.66' },
-    { date: '2026-05-21', time: '10:19', inavPrice: '95.4265', hynixKP: '1918000', hynixKT: '1918000', fxRate: '0.005191', etfPrice: '95.76' },
-    { date: '2026-05-21', time: '10:20', inavPrice: '95.6099', hynixKP: '1919000', hynixKT: '1919000', fxRate: '0.005190', etfPrice: '95.80' },
-    { date: '2026-05-21', time: '10:21', inavPrice: '95.6960', hynixKP: '1920000', hynixKT: '1920000', fxRate: '0.005189', etfPrice: '95.90' },
-    { date: '2026-05-21', time: '10:22', inavPrice: '95.7003', hynixKP: '1920000', hynixKT: '1920000', fxRate: '0.005190', etfPrice: '95.90' },
-    { date: '2026-05-21', time: '10:23', inavPrice: '95.6099', hynixKP: '1919000', hynixKT: '1920000', fxRate: '0.005190', etfPrice: '95.80' },
-    { date: '2026-05-21', time: '10:24', inavPrice: '95.6937', hynixKP: '1922000', hynixKT: '1920000', fxRate: '0.005189', etfPrice: '96.00' },
-    { date: '2026-05-21', time: '10:25', inavPrice: '96.4301', hynixKP: '1928000', hynixKT: '1928000', fxRate: '0.005190', etfPrice: '96.72' },
-    { date: '2026-05-21', time: '10:26', inavPrice: '96.6143', hynixKP: '1930000', hynixKT: '1930000', fxRate: '0.005190', etfPrice: '96.78' },
-    { date: '2026-05-21', time: '10:27', inavPrice: '97.0694', hynixKP: '1935000', hynixKT: '1935000', fxRate: '0.005190', etfPrice: '97.26' },
-    { date: '2026-05-21', time: '10:28', inavPrice: '97.3451', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005190', etfPrice: '97.66' },
-    { date: '2026-05-21', time: '10:29', inavPrice: '97.4366', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005190', etfPrice: '97.74' },
-    { date: '2026-05-21', time: '10:30', inavPrice: '97.5257', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005189', etfPrice: '97.78' },
-    { date: '2026-05-21', time: '10:31', inavPrice: '97.9742', hynixKP: '1945000', hynixKT: '1945000', fxRate: '0.005189', etfPrice: '98.16' },
-    { date: '2026-05-21', time: '10:32', inavPrice: '98.1627', hynixKP: '1948000', hynixKT: '1948000', fxRate: '0.005191', etfPrice: '98.36' },
-    { date: '2026-05-21', time: '10:33', inavPrice: '97.8903', hynixKP: '1945000', hynixKT: '1945000', fxRate: '0.005190', etfPrice: '98.02' },
-    { date: '2026-05-21', time: '10:34', inavPrice: '97.6132', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005190', etfPrice: '97.60' },
-    { date: '2026-05-21', time: '10:35', inavPrice: '97.3363', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005190', etfPrice: '97.78' },
-    { date: '2026-05-21', time: '10:36', inavPrice: '97.8968', hynixKP: '1948000', hynixKT: '1945000', fxRate: '0.005191', etfPrice: '98.36' },
-    { date: '2026-05-21', time: '10:37', inavPrice: '98.1727', hynixKP: '1948000', hynixKT: '1947000', fxRate: '0.005191', etfPrice: '98.48' },
-    { date: '2026-05-21', time: '10:38', inavPrice: '98.1724', hynixKP: '1947000', hynixKT: '1947000', fxRate: '0.005191', etfPrice: '98.56' },
-    { date: '2026-05-21', time: '10:39', inavPrice: '98.3474', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005189', etfPrice: '98.60' },
-    { date: '2026-05-21', time: '10:40', inavPrice: '98.3503', hynixKP: '1949000', hynixKT: '1948500', fxRate: '0.005189', etfPrice: '98.66' },
-    { date: '2026-05-21', time: '10:41', inavPrice: '98.1666', hynixKP: '1948000', hynixKT: '1948000', fxRate: '0.005189', etfPrice: '98.56' },
-    { date: '2026-05-21', time: '10:42', inavPrice: '98.3478', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005189', etfPrice: '98.50' },
-    { date: '2026-05-21', time: '10:43', inavPrice: '98.0772', hynixKP: '1946000', hynixKT: '1947000', fxRate: '0.005189', etfPrice: '98.26' },
-    { date: '2026-05-21', time: '10:44', inavPrice: '97.6197', hynixKP: '1942000', hynixKT: '1941000', fxRate: '0.005189', etfPrice: '97.92' },
-    { date: '2026-05-21', time: '10:45', inavPrice: '97.8002', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005189', etfPrice: '97.94' },
-    { date: '2026-05-21', time: '10:46', inavPrice: '97.3415', hynixKP: '1937500', hynixKT: '1937000', fxRate: '0.005188', etfPrice: '97.60' },
-    { date: '2026-05-21', time: '10:47', inavPrice: '97.4258', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005187', etfPrice: '97.66' },
-    { date: '2026-05-21', time: '10:48', inavPrice: '97.6148', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005189', etfPrice: '97.86' },
-    { date: '2026-05-21', time: '10:49', inavPrice: '97.3451', hynixKP: '1937000', hynixKT: '1937000', fxRate: '0.005190', etfPrice: '97.68' },
-    { date: '2026-05-21', time: '10:50', inavPrice: '97.2536', hynixKP: '1935000', hynixKT: '1935000', fxRate: '0.005190', etfPrice: '97.46' },
-    { date: '2026-05-21', time: '10:51', inavPrice: '97.3551', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005190', etfPrice: '97.48' },
-    { date: '2026-05-21', time: '10:52', inavPrice: '97.2529', hynixKP: '1937000', hynixKT: '1937000', fxRate: '0.005187', etfPrice: '97.52' },
-    { date: '2026-05-21', time: '10:53', inavPrice: '97.3432', hynixKP: '1937000', hynixKT: '1937000', fxRate: '0.005187', etfPrice: '97.54' },
-    { date: '2026-05-21', time: '10:54', inavPrice: '97.5261', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005187', etfPrice: '97.62' },
-    { date: '2026-05-21', time: '10:55', inavPrice: '97.4287', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005185', etfPrice: '97.56' },
-    { date: '2026-05-21', time: '10:56', inavPrice: '97.5161', hynixKP: '1938000', hynixKT: '1939000', fxRate: '0.005186', etfPrice: '97.54' },
-    { date: '2026-05-21', time: '10:57', inavPrice: '97.0622', hynixKP: '1937000', hynixKT: '1934000', fxRate: '0.005186', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '10:58', inavPrice: '97.0542', hynixKP: '1935000', hynixKT: '1935000', fxRate: '0.005185', etfPrice: '97.12' },
-    { date: '2026-05-21', time: '10:59', inavPrice: '97.4139', hynixKP: '1938000', hynixKT: '1937000', fxRate: '0.005183', etfPrice: '97.48' },
-    { date: '2026-05-21', time: '11:00', inavPrice: '97.0448', hynixKP: '1935000', hynixKT: '1935500', fxRate: '0.005181', etfPrice: '97.10' },
-    { date: '2026-05-21', time: '11:01', inavPrice: '97.5105', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005182', etfPrice: '97.50' },
-    { date: '2026-05-21', time: '11:02', inavPrice: '97.3259', hynixKP: '1936000', hynixKT: '1936000', fxRate: '0.005183', etfPrice: '97.30' },
-    { date: '2026-05-21', time: '11:03', inavPrice: '97.3265', hynixKP: '1937000', hynixKT: '1937000', fxRate: '0.005183', etfPrice: '97.38' },
-    { date: '2026-05-21', time: '11:04', inavPrice: '97.1461', hynixKP: '1936000', hynixKT: '1936000', fxRate: '0.005183', etfPrice: '97.20' },
-    { date: '2026-05-21', time: '11:05', inavPrice: '97.1452', hynixKP: '1935000', hynixKT: '1934000', fxRate: '0.005183', etfPrice: '97.14' },
-    { date: '2026-05-21', time: '11:06', inavPrice: '96.8697', hynixKP: '1933000', hynixKT: '1933000', fxRate: '0.005182', etfPrice: '96.90' },
-    { date: '2026-05-21', time: '11:07', inavPrice: '96.8717', hynixKP: '1932000', hynixKT: '1931000', fxRate: '0.005182', etfPrice: '96.86' },
-    { date: '2026-05-21', time: '11:08', inavPrice: '97.0501', hynixKP: '1933000', hynixKT: '1933000', fxRate: '0.005181', etfPrice: '96.98' },
-    { date: '2026-05-21', time: '11:09', inavPrice: '97.0465', hynixKP: '1935000', hynixKT: '1934000', fxRate: '0.005181', etfPrice: '96.94' },
-    { date: '2026-05-21', time: '11:10', inavPrice: '97.5069', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005182', etfPrice: '97.48' },
-    { date: '2026-05-21', time: '11:11', inavPrice: '97.6960', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005181', etfPrice: '97.66' },
-    { date: '2026-05-21', time: '11:12', inavPrice: '97.6059', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '97.60' },
-    { date: '2026-05-21', time: '11:13', inavPrice: '97.6992', hynixKP: '1941000', hynixKT: '1940000', fxRate: '0.005181', etfPrice: '97.64' },
-    { date: '2026-05-21', time: '11:14', inavPrice: '97.6958', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '97.62' },
-    { date: '2026-05-21', time: '11:15', inavPrice: '97.6997', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005183', etfPrice: '97.64' },
-    { date: '2026-05-21', time: '11:16', inavPrice: '97.5145', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005182', etfPrice: '97.30' },
-    { date: '2026-05-21', time: '11:17', inavPrice: '97.3261', hynixKP: '1936000', hynixKT: '1937000', fxRate: '0.005181', etfPrice: '97.30' },
-    { date: '2026-05-21', time: '11:18', inavPrice: '97.3349', hynixKP: '1937000', hynixKT: '1936500', fxRate: '0.005182', etfPrice: '97.24' },
-    { date: '2026-05-21', time: '11:19', inavPrice: '97.3313', hynixKP: '1939000', hynixKT: '1937000', fxRate: '0.005182', etfPrice: '97.42' },
-    { date: '2026-05-21', time: '11:20', inavPrice: '97.8838', hynixKP: '1944000', hynixKT: '1942000', fxRate: '0.005183', etfPrice: '97.88' },
-    { date: '2026-05-21', time: '11:21', inavPrice: '97.8824', hynixKP: '1943000', hynixKT: '1943000', fxRate: '0.005183', etfPrice: '97.90' },
-    { date: '2026-05-21', time: '11:22', inavPrice: '98.2465', hynixKP: '1946000', hynixKT: '1946000', fxRate: '0.005184', etfPrice: '98.22' },
-    { date: '2026-05-21', time: '11:23', inavPrice: '98.3405', hynixKP: '1948000', hynixKT: '1948000', fxRate: '0.005185', etfPrice: '98.36' },
-    { date: '2026-05-21', time: '11:24', inavPrice: '98.3455', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005185', etfPrice: '98.46' },
-    { date: '2026-05-21', time: '11:25', inavPrice: '98.3467', hynixKP: '1948000', hynixKT: '1948000', fxRate: '0.005186', etfPrice: '98.32' },
-    { date: '2026-05-21', time: '11:26', inavPrice: '98.3537', hynixKP: '1947000', hynixKT: '1948000', fxRate: '0.005187', etfPrice: '98.36' },
-    { date: '2026-05-21', time: '11:27', inavPrice: '98.2630', hynixKP: '1948000', hynixKT: '1948000', fxRate: '0.005186', etfPrice: '98.24' },
-    { date: '2026-05-21', time: '11:28', inavPrice: '98.1690', hynixKP: '1947000', hynixKT: '1947000', fxRate: '0.005186', etfPrice: '98.08' },
-    { date: '2026-05-21', time: '11:29', inavPrice: '98.3537', hynixKP: '1948000', hynixKT: '1948000', fxRate: '0.005185', etfPrice: '98.36' },
-    { date: '2026-05-21', time: '11:30', inavPrice: '98.2587', hynixKP: '1947000', hynixKT: '1947000', fxRate: '0.005186', etfPrice: '98.12' },
-    { date: '2026-05-21', time: '11:31', inavPrice: '98.4476', hynixKP: '1950000', hynixKT: '1950000', fxRate: '0.005186', etfPrice: '98.34' },
-    { date: '2026-05-21', time: '11:32', inavPrice: '98.4469', hynixKP: '1950000', hynixKT: '1950000', fxRate: '0.005185', etfPrice: '98.30' },
-    { date: '2026-05-21', time: '11:33', inavPrice: '98.1706', hynixKP: '1947000', hynixKT: '1947000', fxRate: '0.005187', etfPrice: '98.20' },
-    { date: '2026-05-21', time: '11:34', inavPrice: '98.3615', hynixKP: '1949000', hynixKT: '1948000', fxRate: '0.005187', etfPrice: '98.34' },
-    { date: '2026-05-21', time: '11:35', inavPrice: '98.1743', hynixKP: '1947000', hynixKT: '1947000', fxRate: '0.005186', etfPrice: '98.22' },
-    { date: '2026-05-21', time: '11:36', inavPrice: '97.9861', hynixKP: '1945000', hynixKT: '1945000', fxRate: '0.005185', etfPrice: '97.94' },
-    { date: '2026-05-21', time: '11:37', inavPrice: '98.0776', hynixKP: '1947000', hynixKT: '1946000', fxRate: '0.005186', etfPrice: '98.10' },
-    { date: '2026-05-21', time: '11:38', inavPrice: '97.9885', hynixKP: '1946000', hynixKT: '1945000', fxRate: '0.005186', etfPrice: '98.10' },
-    { date: '2026-05-21', time: '11:39', inavPrice: '98.0778', hynixKP: '1947000', hynixKT: '1946000', fxRate: '0.005186', etfPrice: '98.10' },
-    { date: '2026-05-21', time: '11:40', inavPrice: '98.1690', hynixKP: '1946000', hynixKT: '1946000', fxRate: '0.005186', etfPrice: '98.00' },
-    { date: '2026-05-21', time: '11:41', inavPrice: '98.0710', hynixKP: '1945000', hynixKT: '1945000', fxRate: '0.005186', etfPrice: '97.94' },
-    { date: '2026-05-21', time: '11:42', inavPrice: '97.7985', hynixKP: '1942000', hynixKT: '1942000', fxRate: '0.005185', etfPrice: '97.60' },
-    { date: '2026-05-21', time: '11:43', inavPrice: '97.7054', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005186', etfPrice: '97.62' },
-    { date: '2026-05-21', time: '11:44', inavPrice: '97.8892', hynixKP: '1943000', hynixKT: '1943000', fxRate: '0.005187', etfPrice: '97.82' },
-    { date: '2026-05-21', time: '11:45', inavPrice: '97.7968', hynixKP: '1943000', hynixKT: '1942000', fxRate: '0.005186', etfPrice: '97.70' },
-    { date: '2026-05-21', time: '11:46', inavPrice: '97.7054', hynixKP: '1942000', hynixKT: '1942000', fxRate: '0.005186', etfPrice: '97.70' },
-    { date: '2026-05-21', time: '11:47', inavPrice: '97.6115', hynixKP: '1937000', hynixKT: '1939000', fxRate: '0.005185', etfPrice: '97.32' },
-    { date: '2026-05-21', time: '11:48', inavPrice: '97.1520', hynixKP: '1936000', hynixKT: '1936000', fxRate: '0.005185', etfPrice: '97.16' },
-    { date: '2026-05-21', time: '11:49', inavPrice: '97.0648', hynixKP: '1936000', hynixKT: '1936000', fxRate: '0.005185', etfPrice: '97.10' },
-    { date: '2026-05-21', time: '11:50', inavPrice: '96.9680', hynixKP: '1934000', hynixKT: '1934000', fxRate: '0.005184', etfPrice: '96.90' },
-    { date: '2026-05-21', time: '11:51', inavPrice: '96.6881', hynixKP: '1933000', hynixKT: '1932000', fxRate: '0.005183', etfPrice: '96.76' },
-    { date: '2026-05-21', time: '11:52', inavPrice: '97.2399', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005184', etfPrice: '97.16' },
-    { date: '2026-05-21', time: '11:53', inavPrice: '97.3277', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005183', etfPrice: '97.24' },
-    { date: '2026-05-21', time: '11:54', inavPrice: '97.2363', hynixKP: '1936000', hynixKT: '1937000', fxRate: '0.005183', etfPrice: '97.00' },
-    { date: '2026-05-21', time: '11:55', inavPrice: '96.9657', hynixKP: '1933000', hynixKT: '1933000', fxRate: '0.005183', etfPrice: '96.94' },
-    { date: '2026-05-21', time: '11:56', inavPrice: '97.4182', hynixKP: '1939000', hynixKT: '1938000', fxRate: '0.005183', etfPrice: '97.32' },
-    { date: '2026-05-21', time: '11:57', inavPrice: '97.4167', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005183', etfPrice: '97.28' },
-    { date: '2026-05-21', time: '11:58', inavPrice: '97.3313', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005184', etfPrice: '97.26' },
-    { date: '2026-05-21', time: '11:59', inavPrice: '97.5178', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005184', etfPrice: '97.40' },
-    { date: '2026-05-21', time: '12:00', inavPrice: '97.3313', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005184', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:01', inavPrice: '97.3331', hynixKP: '1939000', hynixKT: '1938000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:02', inavPrice: '97.4203', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:03', inavPrice: '97.5993', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:04', inavPrice: '97.8745', hynixKP: '1944000', hynixKT: '1943000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:05', inavPrice: '97.9656', hynixKP: '1943000', hynixKT: '1944000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:06', inavPrice: '97.7834', hynixKP: '1944000', hynixKT: '1944000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:07', inavPrice: '97.9643', hynixKP: '1945000', hynixKT: '1945000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:08', inavPrice: '97.8761', hynixKP: '1942000', hynixKT: '1942500', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:09', inavPrice: '97.5924', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:10', inavPrice: '97.8662', hynixKP: '1943000', hynixKT: '1943000', fxRate: '0.005180', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:11', inavPrice: '97.8798', hynixKP: '1943000', hynixKT: '1943000', fxRate: '0.005181', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:12', inavPrice: '97.6975', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005181', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:13', inavPrice: '97.6925', hynixKP: '1942000', hynixKT: '1941000', fxRate: '0.005181', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:14', inavPrice: '97.3282', hynixKP: '1938000', hynixKT: '1939000', fxRate: '0.005180', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:15', inavPrice: '97.6071', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:16', inavPrice: '97.6071', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:17', inavPrice: '97.5193', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:18', inavPrice: '97.4274', hynixKP: '1938000', hynixKT: '1937500', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:19', inavPrice: '97.4296', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:20', inavPrice: '97.4277', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:21', inavPrice: '97.1438', hynixKP: '1936000', hynixKT: '1935000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:22', inavPrice: '97.3229', hynixKP: '1936000', hynixKT: '1937000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:23', inavPrice: '97.2316', hynixKP: '1935000', hynixKT: '1935000', fxRate: '0.005181', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:24', inavPrice: '97.3241', hynixKP: '1937000', hynixKT: '1937000', fxRate: '0.005181', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:25', inavPrice: '97.6018', hynixKP: '1942000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:26', inavPrice: '97.7846', hynixKP: '1942000', hynixKT: '1942000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:27', inavPrice: '97.8772', hynixKP: '1943000', hynixKT: '1942000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:28', inavPrice: '97.7922', hynixKP: '1942000', hynixKT: '1942000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:29', inavPrice: '97.5141', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005184', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:30', inavPrice: '97.1497', hynixKP: '1937000', hynixKT: '1937000', fxRate: '0.005184', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:31', inavPrice: '97.1527', hynixKP: '1936000', hynixKT: '1936000', fxRate: '0.005184', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:32', inavPrice: '97.1483', hynixKP: '1934000', hynixKT: '1934000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:33', inavPrice: '97.4203', hynixKP: '1938000', hynixKT: '1938000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:34', inavPrice: '97.2328', hynixKP: '1935000', hynixKT: '1935000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:35', inavPrice: '97.3265', hynixKP: '1936000', hynixKT: '1936000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:36', inavPrice: '97.3258', hynixKP: '1937000', hynixKT: '1936000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:37', inavPrice: '97.5105', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:38', inavPrice: '97.6915', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:39', inavPrice: '97.7885', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:40', inavPrice: '97.6896', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005181', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:41', inavPrice: '97.5994', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:42', inavPrice: '97.6014', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:43', inavPrice: '97.6026', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:44', inavPrice: '97.7819', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:45', inavPrice: '97.6969', hynixKP: '1942000', hynixKT: '1942000', fxRate: '0.005184', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:46', inavPrice: '97.9800', hynixKP: '1943000', hynixKT: '1943000', fxRate: '0.005184', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:47', inavPrice: '97.9744', hynixKP: '1944000', hynixKT: '1943000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:48', inavPrice: '98.0670', hynixKP: '1945000', hynixKT: '1945000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:49', inavPrice: '98.0639', hynixKP: '1945000', hynixKT: '1945000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:50', inavPrice: '98.1578', hynixKP: '1946000', hynixKT: '1946000', fxRate: '0.005183', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:51', inavPrice: '98.0743', hynixKP: '1946000', hynixKT: '1946000', fxRate: '0.005184', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:52', inavPrice: '97.6143', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005184', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:53', inavPrice: '97.8863', hynixKP: '1944000', hynixKT: '1944000', fxRate: '0.005184', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:54', inavPrice: '97.6080', hynixKP: '1942000', hynixKT: '1942000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:55', inavPrice: '97.5164', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:56', inavPrice: '97.4267', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:57', inavPrice: '97.3326', hynixKP: '1941000', hynixKT: '1939000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:58', inavPrice: '97.5181', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '12:59', inavPrice: '97.7923', hynixKP: '1943000', hynixKT: '1942500', fxRate: '0.005182', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '13:00', inavPrice: '97.6989', hynixKP: '1940000', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '97.72' },
-    { date: '2026-05-21', time: '13:01', inavPrice: '97.4227', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005184', etfPrice: '97.58' },
-    { date: '2026-05-21', time: '13:02', inavPrice: '97.5201', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005185', etfPrice: '97.54' },
-    { date: '2026-05-21', time: '13:03', inavPrice: '97.7017', hynixKP: '1941000', hynixKT: '1942000', fxRate: '0.005185', etfPrice: '97.70' },
-    { date: '2026-05-21', time: '13:04', inavPrice: '97.5201', hynixKP: '1939000', hynixKT: '1940000', fxRate: '0.005185', etfPrice: '97.52' },
-    { date: '2026-05-21', time: '13:05', inavPrice: '97.4335', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005186', etfPrice: '97.58' },
-    { date: '2026-05-21', time: '13:06', inavPrice: '97.3396', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005186', etfPrice: '97.52' },
-    { date: '2026-05-21', time: '13:07', inavPrice: '97.4311', hynixKP: '1939000', hynixKT: '1940000', fxRate: '0.005186', etfPrice: '97.50' },
-    { date: '2026-05-21', time: '13:08', inavPrice: '97.3384', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005185', etfPrice: '97.30' },
-    { date: '2026-05-21', time: '13:09', inavPrice: '97.1539', hynixKP: '1937000', hynixKT: '1938000', fxRate: '0.005185', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '13:10', inavPrice: '97.3319', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005185', etfPrice: '97.30' },
-    { date: '2026-05-21', time: '13:11', inavPrice: '97.4251', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005184', etfPrice: '97.46' },
-    { date: '2026-05-21', time: '13:12', inavPrice: '97.6046', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005184', etfPrice: '97.60' },
-    { date: '2026-05-21', time: '13:13', inavPrice: '97.5105', hynixKP: '1941000', hynixKT: '1940000', fxRate: '0.005183', etfPrice: '97.56' },
-    { date: '2026-05-21', time: '13:14', inavPrice: '97.5081', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.46' },
-    { date: '2026-05-21', time: '13:15', inavPrice: '97.5081', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005182', etfPrice: '97.46' },
-    { date: '2026-05-21', time: '13:16', inavPrice: '97.2340', hynixKP: '1939000', hynixKT: '1938000', fxRate: '0.005182', etfPrice: '97.34' },
-    { date: '2026-05-21', time: '13:17', inavPrice: '97.4179', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.34' },
-    { date: '2026-05-21', time: '13:18', inavPrice: '97.6020', hynixKP: '1942000', hynixKT: '1940000', fxRate: '0.005182', etfPrice: '97.56' },
-    { date: '2026-05-21', time: '13:19', inavPrice: '97.5985', hynixKP: '1942000', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '97.70' },
-    { date: '2026-05-21', time: '13:20', inavPrice: '97.5102', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '97.56' },
-    { date: '2026-05-21', time: '13:21', inavPrice: '97.6868', hynixKP: '1943000', hynixKT: '1942000', fxRate: '0.005181', etfPrice: '97.58' },
-    { date: '2026-05-21', time: '13:22', inavPrice: '97.7779', hynixKP: '1946000', hynixKT: '1944000', fxRate: '0.005181', etfPrice: '97.84' },
-    { date: '2026-05-21', time: '13:23', inavPrice: '98.0589', hynixKP: '1948000', hynixKT: '1948000', fxRate: '0.005182', etfPrice: '97.94' },
-    { date: '2026-05-21', time: '13:24', inavPrice: '97.9624', hynixKP: '1948000', hynixKT: '1948000', fxRate: '0.005181', etfPrice: '97.86' },
-    { date: '2026-05-21', time: '13:25', inavPrice: '98.0532', hynixKP: '1947500', hynixKT: '1947000', fxRate: '0.005182', etfPrice: '97.92' },
-    { date: '2026-05-21', time: '13:26', inavPrice: '97.7803', hynixKP: '1946000', hynixKT: '1946000', fxRate: '0.005180', etfPrice: '97.64' },
-    { date: '2026-05-21', time: '13:27', inavPrice: '97.4021', hynixKP: '1942000', hynixKT: '1942000', fxRate: '0.005178', etfPrice: '97.34' },
-    { date: '2026-05-21', time: '13:28', inavPrice: '97.3137', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '97.30' },
-    { date: '2026-05-21', time: '13:29', inavPrice: '97.4947', hynixKP: '1944000', hynixKT: '1944000', fxRate: '0.005178', etfPrice: '97.50' },
-    { date: '2026-05-21', time: '13:30', inavPrice: '97.4969', hynixKP: '1942000', hynixKT: '1942000', fxRate: '0.005178', etfPrice: '97.30' },
-    { date: '2026-05-21', time: '13:31', inavPrice: '97.1302', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005178', etfPrice: '97.24' },
-    { date: '2026-05-21', time: '13:32', inavPrice: '97.1344', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005179', etfPrice: '97.12' },
-    { date: '2026-05-21', time: '13:33', inavPrice: '97.2221', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005179', etfPrice: '97.26' },
-    { date: '2026-05-21', time: '13:34', inavPrice: '97.2221', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005179', etfPrice: '97.12' },
-    { date: '2026-05-21', time: '13:35', inavPrice: '97.4062', hynixKP: '1940000', hynixKT: '1940000', fxRate: '0.005178', etfPrice: '97.16' },
-    { date: '2026-05-21', time: '13:36', inavPrice: '97.3199', hynixKP: '1941000', hynixKT: '1940000', fxRate: '0.005178', etfPrice: '97.24' },
-    { date: '2026-05-21', time: '13:37', inavPrice: '97.0437', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005177', etfPrice: '97.06' },
-    { date: '2026-05-21', time: '13:38', inavPrice: '97.1357', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005177', etfPrice: '97.10' },
-    { date: '2026-05-21', time: '13:39', inavPrice: '97.1330', hynixKP: '1940000', hynixKT: '1939000', fxRate: '0.005177', etfPrice: '97.06' },
-    { date: '2026-05-21', time: '13:40', inavPrice: '97.4052', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005177', etfPrice: '97.26' },
-    { date: '2026-05-21', time: '13:41', inavPrice: '97.4864', hynixKP: '1942000', hynixKT: '1942000', fxRate: '0.005175', etfPrice: '97.32' },
-    { date: '2026-05-21', time: '13:42', inavPrice: '97.3067', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005174', etfPrice: '97.22' },
-    { date: '2026-05-21', time: '13:43', inavPrice: '97.3087', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005177', etfPrice: '97.24' },
-    { date: '2026-05-21', time: '13:44', inavPrice: '97.4035', hynixKP: '1943000', hynixKT: '1942000', fxRate: '0.005178', etfPrice: '97.40' },
-    { date: '2026-05-21', time: '13:45', inavPrice: '97.4047', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '97.24' },
-    { date: '2026-05-21', time: '13:46', inavPrice: '97.4074', hynixKP: '1942000', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '97.32' },
-    { date: '2026-05-21', time: '13:47', inavPrice: '97.4935', hynixKP: '1943000', hynixKT: '1942000', fxRate: '0.005178', etfPrice: '97.46' },
-    { date: '2026-05-21', time: '13:48', inavPrice: '97.5884', hynixKP: '1942500', hynixKT: '1943000', fxRate: '0.005178', etfPrice: '97.48' },
-    { date: '2026-05-21', time: '13:49', inavPrice: '97.6726', hynixKP: '1943000', hynixKT: '1944000', fxRate: '0.005177', etfPrice: '97.46' },
-    { date: '2026-05-21', time: '13:50', inavPrice: '97.7622', hynixKP: '1944000', hynixKT: '1943000', fxRate: '0.005177', etfPrice: '97.66' },
-    { date: '2026-05-21', time: '13:51', inavPrice: '97.9513', hynixKP: '1944000', hynixKT: '1945000', fxRate: '0.005178', etfPrice: '97.84' },
-    { date: '2026-05-21', time: '13:52', inavPrice: '97.8637', hynixKP: '1944500', hynixKT: '1944000', fxRate: '0.005179', etfPrice: '97.80' },
-    { date: '2026-05-21', time: '13:53', inavPrice: '98.1389', hynixKP: '1947000', hynixKT: '1947000', fxRate: '0.005179', etfPrice: '98.00' },
-    { date: '2026-05-21', time: '13:54', inavPrice: '98.2302', hynixKP: '1947000', hynixKT: '1947000', fxRate: '0.005180', etfPrice: '97.98' },
-    { date: '2026-05-21', time: '13:55', inavPrice: '98.2345', hynixKP: '1948000', hynixKT: '1947000', fxRate: '0.005180', etfPrice: '98.00' },
-    { date: '2026-05-21', time: '13:56', inavPrice: '98.2257', hynixKP: '1947000', hynixKT: '1947000', fxRate: '0.005180', etfPrice: '98.10' },
-    { date: '2026-05-21', time: '13:57', inavPrice: '98.4116', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005179', etfPrice: '98.26' },
-    { date: '2026-05-21', time: '13:58', inavPrice: '98.5050', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005180', etfPrice: '98.32' },
-    { date: '2026-05-21', time: '13:59', inavPrice: '98.5093', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005181', etfPrice: '98.30' },
-    { date: '2026-05-21', time: '14:00', inavPrice: '98.4129', hynixKP: '1949000', hynixKT: '1948000', fxRate: '0.005180', etfPrice: '98.26' },
-    { date: '2026-05-21', time: '14:01', inavPrice: '98.2315', hynixKP: '1948000', hynixKT: '1947000', fxRate: '0.005180', etfPrice: '98.16' },
-    { date: '2026-05-21', time: '14:02', inavPrice: '98.3189', hynixKP: '1948000', hynixKT: '1948000', fxRate: '0.005180', etfPrice: '98.28' },
-    { date: '2026-05-21', time: '14:03', inavPrice: '98.5066', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005179', etfPrice: '98.30' },
-    { date: '2026-05-21', time: '14:04', inavPrice: '98.5917', hynixKP: '1950000', hynixKT: '1950000', fxRate: '0.005178', etfPrice: '98.42' },
-    { date: '2026-05-21', time: '14:05', inavPrice: '98.5917', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005178', etfPrice: '98.38' },
-    { date: '2026-05-21', time: '14:06', inavPrice: '98.5994', hynixKP: '1950000', hynixKT: '1950000', fxRate: '0.005178', etfPrice: '98.34' },
-    { date: '2026-05-21', time: '14:07', inavPrice: '98.5107', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005179', etfPrice: '98.36' },
-    { date: '2026-05-21', time: '14:08', inavPrice: '98.5956', hynixKP: '1949000', hynixKT: '1949000', fxRate: '0.005177', etfPrice: '98.46' },
-    { date: '2026-05-21', time: '14:09', inavPrice: '98.5931', hynixKP: '1950000', hynixKT: '1949000', fxRate: '0.005177', etfPrice: '98.50' },
-    { date: '2026-05-21', time: '14:10', inavPrice: '98.8605', hynixKP: '1953000', hynixKT: '1953000', fxRate: '0.005176', etfPrice: '98.64' },
-    { date: '2026-05-21', time: '14:11', inavPrice: '98.5905', hynixKP: '1952000', hynixKT: '1952000', fxRate: '0.005176', etfPrice: '98.44' },
-    { date: '2026-05-21', time: '14:12', inavPrice: '98.7773', hynixKP: '1952000', hynixKT: '1952000', fxRate: '0.005176', etfPrice: '98.60' },
-    { date: '2026-05-21', time: '14:13', inavPrice: '98.5019', hynixKP: '1950000', hynixKT: '1950000', fxRate: '0.005177', etfPrice: '98.14' },
-    { date: '2026-05-21', time: '14:14', inavPrice: '98.1393', hynixKP: '1947000', hynixKT: '1947000', fxRate: '0.005177', etfPrice: '97.86' },
-    { date: '2026-05-21', time: '14:15', inavPrice: '98.3192', hynixKP: '1950000', hynixKT: '1949000', fxRate: '0.005177', etfPrice: '98.08' },
-    { date: '2026-05-21', time: '14:16', inavPrice: '97.5915', hynixKP: '1943000', hynixKT: '1943000', fxRate: '0.005177', etfPrice: '97.32' },
-    { date: '2026-05-21', time: '14:17', inavPrice: '97.0410', hynixKP: '1939000', hynixKT: '1939000', fxRate: '0.005175', etfPrice: '96.80' },
-    { date: '2026-05-21', time: '14:18', inavPrice: '97.1267', hynixKP: '1942000', hynixKT: '1941000', fxRate: '0.005175', etfPrice: '97.20' },
-    { date: '2026-05-21', time: '14:19', inavPrice: '97.2179', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005175', etfPrice: '97.16' },
-    { date: '2026-05-21', time: '14:20', inavPrice: '97.3121', hynixKP: '1941000', hynixKT: '1941000', fxRate: '0.005175', etfPrice: '96.94' },
-    { date: '2026-05-21', time: '14:21', inavPrice: '96.5780', hynixKP: '', hynixKT: '1941000', fxRate: '0.005176', etfPrice: '96.46' },
-    { date: '2026-05-21', time: '14:22', inavPrice: '96.6842', hynixKP: '', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '96.58' },
-    { date: '2026-05-21', time: '14:23', inavPrice: '96.4965', hynixKP: '', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '96.42' },
-    { date: '2026-05-21', time: '14:24', inavPrice: '96.4113', hynixKP: '', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '96.48' },
-    { date: '2026-05-21', time: '14:25', inavPrice: '95.4980', hynixKP: '', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '95.74' },
-    { date: '2026-05-21', time: '14:26', inavPrice: '96.1329', hynixKP: '', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '95.98' },
-    { date: '2026-05-21', time: '14:27', inavPrice: '96.4970', hynixKP: '', hynixKT: '1941000', fxRate: '0.005178', etfPrice: '96.32' },
-    { date: '2026-05-21', time: '14:28', inavPrice: '96.5026', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '96.44' },
-    { date: '2026-05-21', time: '14:29', inavPrice: '96.5060', hynixKP: '', hynixKT: '1941000', fxRate: '0.005181', etfPrice: '96.52' },
-    { date: '2026-05-21', time: '14:30', inavPrice: '96.6956', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '96.84' },
-    { date: '2026-05-21', time: '14:31', inavPrice: '97.1443', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '97.00' },
-    { date: '2026-05-21', time: '14:32', inavPrice: '96.9616', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '96.84' },
-    { date: '2026-05-21', time: '14:33', inavPrice: '97.0580', hynixKP: '', hynixKT: '1941000', fxRate: '0.005182', etfPrice: '96.80' },
-    { date: '2026-05-21', time: '14:34', inavPrice: '96.8691', hynixKP: '', hynixKT: '1941000', fxRate: '0.005179', etfPrice: '96.70' },
-    { date: '2026-05-21', time: '14:35', inavPrice: '96.6910', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '96.12' },
-    { date: '2026-05-21', time: '14:36', inavPrice: '96.7812', hynixKP: '', hynixKT: '1941000', fxRate: '0.005181', etfPrice: '95.78' },
-    { date: '2026-05-21', time: '14:37', inavPrice: '96.7801', hynixKP: '', hynixKT: '1941000', fxRate: '0.005181', etfPrice: '95.72' },
-    { date: '2026-05-21', time: '14:38', inavPrice: '96.7801', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '95.18' },
-    { date: '2026-05-21', time: '14:39', inavPrice: '96.7786', hynixKP: '', hynixKT: '1941000', fxRate: '0.005180', etfPrice: '95.26' },
-    { date: '2026-05-21', time: '14:40', inavPrice: '96.7735', hynixKP: '', hynixKT: '1939000', fxRate: '0.005179', etfPrice: '95.72' },
-    { date: '2026-05-21', time: '14:41', inavPrice: '96.7757', hynixKP: '', hynixKT: '1940000', fxRate: '0.005179', etfPrice: '95.66' },
-    { date: '2026-05-21', time: '14:42', inavPrice: '96.7743', hynixKP: '', hynixKT: '1940000', fxRate: '0.005179', etfPrice: '95.70' },
-    { date: '2026-05-21', time: '14:43', inavPrice: '96.7738', hynixKP: '', hynixKT: '1936000', fxRate: '0.005178', etfPrice: '95.60' },
-    { date: '2026-05-21', time: '14:44', inavPrice: '96.7686', hynixKP: '', hynixKT: '1938000', fxRate: '0.005176', etfPrice: '95.78' },
-    { date: '2026-05-21', time: '14:45', inavPrice: '96.7672', hynixKP: '', hynixKT: '1934000', fxRate: '0.005178', etfPrice: '95.86' },
-    { date: '2026-05-21', time: '14:46', inavPrice: '96.0411', hynixKP: '', hynixKT: '1933000', fxRate: '0.005178', etfPrice: '95.82' },
-    { date: '2026-05-21', time: '14:47', inavPrice: '96.0437', hynixKP: '', hynixKT: '1935000', fxRate: '0.005179', etfPrice: '95.68' },
-    { date: '2026-05-21', time: '14:48', inavPrice: '96.0459', hynixKP: '', hynixKT: '1937000', fxRate: '0.005179', etfPrice: '95.70' },
-    { date: '2026-05-21', time: '14:49', inavPrice: '96.0439', hynixKP: '', hynixKT: '1937000', fxRate: '0.005179', etfPrice: '95.74' },
-    { date: '2026-05-21', time: '14:50', inavPrice: '96.0420', hynixKP: '', hynixKT: '1934000', fxRate: '0.005179', etfPrice: '95.88' },
-    { date: '2026-05-21', time: '14:51', inavPrice: '96.0570', hynixKP: '', hynixKT: '1933000', fxRate: '0.005181', etfPrice: '95.60' },
-    { date: '2026-05-21', time: '14:52', inavPrice: '96.0570', hynixKP: '', hynixKT: '1932000', fxRate: '0.005182', etfPrice: '95.28' },
-    { date: '2026-05-21', time: '14:53', inavPrice: '96.0548', hynixKP: '', hynixKT: '1930000', fxRate: '0.005181', etfPrice: '95.30' },
-    { date: '2026-05-21', time: '14:54', inavPrice: '96.0488', hynixKP: '', hynixKT: '1926000', fxRate: '0.005181', etfPrice: '95.02' },
-    { date: '2026-05-21', time: '14:55', inavPrice: '96.0512', hynixKP: '', hynixKT: '1927000', fxRate: '0.005180', etfPrice: '95.08' },
-    { date: '2026-05-21', time: '14:56', inavPrice: '96.0460', hynixKP: '', hynixKT: '1929000', fxRate: '0.005179', etfPrice: '95.02' },
-    { date: '2026-05-21', time: '14:57', inavPrice: '96.0440', hynixKP: '', hynixKT: '1925000', fxRate: '0.005179', etfPrice: '94.76' },
-    { date: '2026-05-21', time: '14:58', inavPrice: '96.0449', hynixKP: '', hynixKT: '1923000', fxRate: '0.005179', etfPrice: '94.80' },
-    { date: '2026-05-21', time: '14:59', inavPrice: '96.0449', hynixKP: '', hynixKT: '1922000', fxRate: '0.005179', etfPrice: '94.62' },
-    { date: '2026-05-21', time: '15:00', inavPrice: '96.0447', hynixKP: '', hynixKT: '1919000', fxRate: '0.005180', etfPrice: '94.50' },
-    { date: '2026-05-21', time: '15:01', inavPrice: '96.0567', hynixKP: '', hynixKT: '1922000', fxRate: '0.005180', etfPrice: '94.52' },
-    { date: '2026-05-21', time: '15:02', inavPrice: '96.0522', hynixKP: '', hynixKT: '1920000', fxRate: '0.005180', etfPrice: '94.52' },
-    { date: '2026-05-21', time: '15:03', inavPrice: '96.0635', hynixKP: '', hynixKT: '1915000', fxRate: '0.005182', etfPrice: '94.14' },
-    { date: '2026-05-21', time: '15:04', inavPrice: '96.0701', hynixKP: '', hynixKT: '1918000', fxRate: '0.005182', etfPrice: '94.00' },
-    { date: '2026-05-21', time: '15:05', inavPrice: '96.0624', hynixKP: '', hynixKT: '1915000', fxRate: '0.005182', etfPrice: '93.64' },
-    { date: '2026-05-21', time: '15:06', inavPrice: '96.0622', hynixKP: '', hynixKT: '1914000', fxRate: '0.005182', etfPrice: '93.80' },
-    { date: '2026-05-21', time: '15:07', inavPrice: '96.0609', hynixKP: '', hynixKT: '1920000', fxRate: '0.005182', etfPrice: '94.20' },
-    { date: '2026-05-21', time: '15:08', inavPrice: '96.0624', hynixKP: '', hynixKT: '1922000', fxRate: '0.005182', etfPrice: '95.00' },
-    { date: '2026-05-21', time: '15:09', inavPrice: '96.0587', hynixKP: '', hynixKT: '1917000', fxRate: '0.005181', etfPrice: '94.22' },
-    { date: '2026-05-21', time: '15:10', inavPrice: '96.0701', hynixKP: '', hynixKT: '1914000', fxRate: '0.005182', etfPrice: '93.92' },
-    { date: '2026-05-21', time: '15:11', inavPrice: '96.0619', hynixKP: '', hynixKT: '1912000', fxRate: '0.005181', etfPrice: '93.72' },
-    { date: '2026-05-21', time: '15:12', inavPrice: '96.0625', hynixKP: '', hynixKT: '1909000', fxRate: '0.005182', etfPrice: '93.62' },
-    { date: '2026-05-21', time: '15:13', inavPrice: '96.0657', hynixKP: '', hynixKT: '1906000', fxRate: '0.005183', etfPrice: '93.42' },
-    { date: '2026-05-21', time: '15:14', inavPrice: '96.0642', hynixKP: '', hynixKT: '1902000', fxRate: '0.005183', etfPrice: '93.14' },
-    { date: '2026-05-21', time: '15:15', inavPrice: '96.0734', hynixKP: '', hynixKT: '1896000', fxRate: '0.005184', etfPrice: '93.30' },
-    { date: '2026-05-21', time: '15:16', inavPrice: '96.0537', hynixKP: '', hynixKT: '1893000', fxRate: '0.005181', etfPrice: '93.10' },
-    { date: '2026-05-21', time: '15:17', inavPrice: '96.0427', hynixKP: '', hynixKT: '1887000', fxRate: '0.005179', etfPrice: '92.74' },
-    { date: '2026-05-21', time: '15:18', inavPrice: '96.0440', hynixKP: '', hynixKT: '1895000', fxRate: '0.005179', etfPrice: '92.64' },
-    { date: '2026-05-21', time: '15:19', inavPrice: '96.0526', hynixKP: '', hynixKT: '1900000', fxRate: '0.005179', etfPrice: '92.48' },
-    { date: '2026-05-21', time: '15:20', inavPrice: '96.0482', hynixKP: '', hynixKT: '1899000', fxRate: '0.005179', etfPrice: '92.10' },
-    { date: '2026-05-21', time: '15:21', inavPrice: '96.0431', hynixKP: '', hynixKT: '1900000', fxRate: '0.005180', etfPrice: '92.52' },
-    { date: '2026-05-21', time: '15:22', inavPrice: '96.0482', hynixKP: '', hynixKT: '1904000', fxRate: '0.005179', etfPrice: '92.86' },
-    { date: '2026-05-21', time: '15:23', inavPrice: '96.0438', hynixKP: '', hynixKT: '1901000', fxRate: '0.005178', etfPrice: '93.00' },
-    { date: '2026-05-21', time: '15:24', inavPrice: '96.0460', hynixKP: '', hynixKT: '1903000', fxRate: '0.005179', etfPrice: '92.58' },
-    { date: '2026-05-21', time: '15:25', inavPrice: '96.0478', hynixKP: '', hynixKT: '1906000', fxRate: '0.005179', etfPrice: '93.10' },
-    { date: '2026-05-21', time: '15:26', inavPrice: '96.0488', hynixKP: '', hynixKT: '1909000', fxRate: '0.005179', etfPrice: '93.12' },
-    { date: '2026-05-21', time: '15:27', inavPrice: '96.0432', hynixKP: '', hynixKT: '1906000', fxRate: '0.005179', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '15:28', inavPrice: '96.0504', hynixKP: '', hynixKT: '1908000', fxRate: '0.005180', etfPrice: '93.14' },
-    { date: '2026-05-21', time: '15:29', inavPrice: '96.0485', hynixKP: '', hynixKT: '1909000', fxRate: '0.005179', etfPrice: '93.94' },
-    { date: '2026-05-21', time: '15:30', inavPrice: '96.0408', hynixKP: '', hynixKT: '1909000', fxRate: '0.005178', etfPrice: '93.98' },
-    { date: '2026-05-21', time: '15:31', inavPrice: '96.0405', hynixKP: '', hynixKT: '1908000', fxRate: '0.005178', etfPrice: '94.18' },
-    { date: '2026-05-21', time: '15:32', inavPrice: '96.0383', hynixKP: '', hynixKT: '1906000', fxRate: '0.005178', etfPrice: '93.70' },
-    { date: '2026-05-21', time: '15:33', inavPrice: '96.0411', hynixKP: '', hynixKT: '1906000', fxRate: '0.005177', etfPrice: '93.60' },
-    { date: '2026-05-21', time: '15:34', inavPrice: '96.0383', hynixKP: '', hynixKT: '1906000', fxRate: '0.005177', etfPrice: '93.78' },
-    { date: '2026-05-21', time: '15:35', inavPrice: '96.0423', hynixKP: '', hynixKT: '1906000', fxRate: '0.005178', etfPrice: '94.14' },
-    { date: '2026-05-21', time: '15:36', inavPrice: '96.0438', hynixKP: '', hynixKT: '1906000', fxRate: '0.005178', etfPrice: '93.90' },
-    { date: '2026-05-21', time: '15:37', inavPrice: '96.0438', hynixKP: '', hynixKT: '1906000', fxRate: '0.005178', etfPrice: '93.68' },
-    { date: '2026-05-21', time: '15:38', inavPrice: '96.0395', hynixKP: '', hynixKT: '1905000', fxRate: '0.005178', etfPrice: '93.50' },
-    { date: '2026-05-21', time: '15:39', inavPrice: '96.0426', hynixKP: '', hynixKT: '1905000', fxRate: '0.005177', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '15:40', inavPrice: '96.0411', hynixKP: '', hynixKT: '1904000', fxRate: '0.005178', etfPrice: '93.40' },
-    { date: '2026-05-21', time: '15:41', inavPrice: '96.0478', hynixKP: '', hynixKT: '1903000', fxRate: '0.005178', etfPrice: '93.48' },
-    { date: '2026-05-21', time: '15:42', inavPrice: '96.0500', hynixKP: '', hynixKT: '1902000', fxRate: '0.005178', etfPrice: '93.78' },
-    { date: '2026-05-21', time: '15:43', inavPrice: '96.0501', hynixKP: '', hynixKT: '1907000', fxRate: '0.005178', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '15:44', inavPrice: '96.0484', hynixKP: '', hynixKT: '1909000', fxRate: '0.005178', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '15:45', inavPrice: '96.0482', hynixKP: '', hynixKT: '1909000', fxRate: '0.005178', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '15:46', inavPrice: '96.0494', hynixKP: '', hynixKT: '1907000', fxRate: '0.005179', etfPrice: '93.50' },
-    { date: '2026-05-21', time: '15:47', inavPrice: '96.0553', hynixKP: '', hynixKT: '1907000', fxRate: '0.005179', etfPrice: '93.50' },
-    { date: '2026-05-21', time: '15:48', inavPrice: '96.0568', hynixKP: '', hynixKT: '1907000', fxRate: '0.005180', etfPrice: '93.50' },
-    { date: '2026-05-21', time: '15:49', inavPrice: '96.0554', hynixKP: '', hynixKT: '1908000', fxRate: '0.005180', etfPrice: '93.40' },
-    { date: '2026-05-21', time: '15:50', inavPrice: '96.0574', hynixKP: '', hynixKT: '1908000', fxRate: '0.005180', etfPrice: '93.38' },
-    { date: '2026-05-21', time: '15:51', inavPrice: '96.0567', hynixKP: '', hynixKT: '1909000', fxRate: '0.005179', etfPrice: '93.40' },
-    { date: '2026-05-21', time: '15:52', inavPrice: '96.0690', hynixKP: '', hynixKT: '1912000', fxRate: '0.005182', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '15:53', inavPrice: '96.0611', hynixKP: '', hynixKT: '1916000', fxRate: '0.005182', etfPrice: '93.50' },
-    { date: '2026-05-21', time: '15:54', inavPrice: '96.0701', hynixKP: '', hynixKT: '1916000', fxRate: '0.005183', etfPrice: '93.70' },
-    { date: '2026-05-21', time: '15:55', inavPrice: '96.0712', hynixKP: '', hynixKT: '1917000', fxRate: '0.005182', etfPrice: '93.80' },
-    { date: '2026-05-21', time: '15:56', inavPrice: '96.0701', hynixKP: '', hynixKT: '1916000', fxRate: '0.005182', etfPrice: '94.00' },
-    { date: '2026-05-21', time: '15:57', inavPrice: '96.0668', hynixKP: '', hynixKT: '1913000', fxRate: '0.005183', etfPrice: '93.92' },
-    { date: '2026-05-21', time: '15:58', inavPrice: '96.0632', hynixKP: '', hynixKT: '1915000', fxRate: '0.005183', etfPrice: '93.58' },
-    { date: '2026-05-21', time: '15:59', inavPrice: '96.0642', hynixKP: '', hynixKT: '1913000', fxRate: '0.005183', etfPrice: '93.54' },
-    { date: '2026-05-21', time: '16:00', inavPrice: '96.0635', hynixKP: '', hynixKT: '1913000', fxRate: '0.005183', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '16:01', inavPrice: '96.0683', hynixKP: '', hynixKT: '1913000', fxRate: '0.005183', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '16:02', inavPrice: '96.0668', hynixKP: '', hynixKT: '1912000', fxRate: '0.005183', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '16:03', inavPrice: '96.0666', hynixKP: '', hynixKT: '1913000', fxRate: '0.005182', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '16:04', inavPrice: '96.0701', hynixKP: '', hynixKT: '1912000', fxRate: '0.005183', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '16:05', inavPrice: '96.0761', hynixKP: '', hynixKT: '1913000', fxRate: '0.005185', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '16:06', inavPrice: '96.0801', hynixKP: '', hynixKT: '1916000', fxRate: '0.005185', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '16:07', inavPrice: '96.0725', hynixKP: '', hynixKT: '1917000', fxRate: '0.005185', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '16:08', inavPrice: '96.0687', hynixKP: '', hynixKT: '1918000', fxRate: '0.005186', etfPrice: '93.46' },
-    { date: '2026-05-21', time: '16:09', inavPrice: '96.0792', hynixKP: '', hynixKT: '1920000', fxRate: '0.005186', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:10', inavPrice: '96.0789', hynixKP: '', hynixKT: '1918000', fxRate: '0.005187', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:11', inavPrice: '96.0762', hynixKP: '', hynixKT: '1918000', fxRate: '0.005187', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:12', inavPrice: '96.0934', hynixKP: '', hynixKT: '1918000', fxRate: '0.005192', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:13', inavPrice: '96.0922', hynixKP: '', hynixKT: '1922000', fxRate: '0.005191', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:14', inavPrice: '96.0878', hynixKP: '', hynixKT: '1920000', fxRate: '0.005191', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:15', inavPrice: '96.0968', hynixKP: '', hynixKT: '1921000', fxRate: '0.005192', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:16', inavPrice: '96.0958', hynixKP: '', hynixKT: '1923000', fxRate: '0.005192', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:17', inavPrice: '96.0923', hynixKP: '', hynixKT: '1926000', fxRate: '0.005192', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:18', inavPrice: '96.0892', hynixKP: '', hynixKT: '1927000', fxRate: '0.005192', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:19', inavPrice: '96.0803', hynixKP: '', hynixKT: '1926000', fxRate: '0.005188', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:20', inavPrice: '96.0744', hynixKP: '', hynixKT: '1920000', fxRate: '0.005187', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:21', inavPrice: '96.0865', hynixKP: '', hynixKT: '1923000', fxRate: '0.005188', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:22', inavPrice: '96.0814', hynixKP: '', hynixKT: '1924000', fxRate: '0.005187', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:23', inavPrice: '96.0945', hynixKP: '', hynixKT: '1923000', fxRate: '0.005188', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:24', inavPrice: '96.0829', hynixKP: '', hynixKT: '1921000', fxRate: '0.005187', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:25', inavPrice: '96.0789', hynixKP: '', hynixKT: '1920000', fxRate: '0.005187', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:26', inavPrice: '96.0739', hynixKP: '', hynixKT: '1923000', fxRate: '0.005187', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:27', inavPrice: '96.0765', hynixKP: '', hynixKT: '1923000', fxRate: '0.005185', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:28', inavPrice: '96.0679', hynixKP: '', hynixKT: '1923000', fxRate: '0.005185', etfPrice: '93.06' },
-    { date: '2026-05-21', time: '16:29', inavPrice: '96.0745', hynixKP: '', hynixKT: '1923000', fxRate: '0.005184', etfPrice: '93.06' }
+    { date: '2026-06-09', time: '13:00', inavPrice: '95.80', hynixKP: '1980000', hynixKT: '1980000', etfPrice: '97.92' },
+    { date: '2026-06-09', time: '13:30', inavPrice: '96.05', hynixKP: '1982000', hynixKT: '1982000', etfPrice: '98.12' },
+    { date: '2026-06-09', time: '14:00', inavPrice: '95.95', hynixKP: '1981000', hynixKT: '1981000', etfPrice: '98.00' },
+    { date: '2026-06-09', time: '14:30', inavPrice: '95.80', hynixKP: '',        hynixKT: '1979000', etfPrice: '97.80' },
+    { date: '2026-06-09', time: '15:00', inavPrice: '95.50', hynixKP: '',        hynixKT: '1972000', etfPrice: '97.20' },
 ];
 
 export function getColumns() {
@@ -542,6 +128,11 @@ export function renderBaseline(container) {
 
 /**
  * Render the unified intraday data table.
+ *
+ * Initial render uses the inline DEMO_DATA fallback (small, no network needed).
+ * The real default dataset — 5 BBG trading days preprocessed offline — is
+ * loaded asynchronously from /data/demo-multi-day.json by
+ * loadAndPopulateDemoData(); see main.js init for the wire-up.
  */
 export function renderTable(container) {
     const html = `
@@ -555,6 +146,66 @@ export function renderTable(container) {
         </table>
     `;
     container.innerHTML = html;
+}
+
+/**
+ * Asynchronously fetch and load the multi-day BBG demo dataset.
+ *
+ * Hosted at /data/demo-multi-day.json (preprocessed by tools/preprocess-demo.cjs
+ * from the 62MB BBG export, see commit notes). On success, replaces the
+ * current table body with the new rows. On failure (404 / parse error /
+ * offline), keeps the inline fallback and logs to console — the user can
+ * still import their own Excel.
+ *
+ * @returns {Promise<{ok: boolean, rows?: number, dates?: string[], error?: string}>}
+ */
+// Per-(date,time) flag = 1 when the source iNAV tick happens at-or-after
+// an intraday >1% jump (BBG NAV re-publish / ex-div / data patch). Populated
+// by loadAndPopulateDemoData(); consumed by the data-quality panel via
+// getDataQualityFlags(). Returns an empty Map for user-imported / pasted
+// datasets where suspect detection isn't available.
+let suspectFlags = new Map();
+export function getDataQualityFlags() { return suspectFlags; }
+
+export async function loadAndPopulateDemoData() {
+    try {
+        const resp = await fetch('/data/demo-multi-day.json', { cache: 'no-store' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (!Array.isArray(data) || data.length === 0) {
+            throw new Error('empty or non-array payload');
+        }
+        const tbody = document.getElementById('data-tbody');
+        if (!tbody) throw new Error('#data-tbody not in DOM yet');
+        // Normalize: ensure all expected keys exist as strings; the JSON
+        // emits numbers for inavPrice / hynixKP / hynixKT / etfPrice and
+        // null for empty KP (post-14:20). renderRowHTML expects strings
+        // and handles empty/null transparently.
+        const norm = data.map(r => ({
+            date: r.date || '',
+            time: r.time || '',
+            inavPrice: r.inavPrice != null ? String(r.inavPrice) : '',
+            hynixKP:   r.hynixKP   != null ? String(r.hynixKP)   : '',
+            hynixKT:   r.hynixKT   != null ? String(r.hynixKT)   : '',
+            fxRate:    r.fxRate    != null ? String(r.fxRate)    : '',
+            etfPrice:  r.etfPrice  != null ? String(r.etfPrice)  : '',
+            etfBid:    r.etfBid    != null ? String(r.etfBid)    : '',
+            etfAsk:    r.etfAsk    != null ? String(r.etfAsk)    : '',
+        }));
+        tbody.innerHTML = generateRowsWithData(norm);
+
+        // Capture suspect-row metadata in a side channel keyed by date|time.
+        suspectFlags = new Map();
+        for (const r of data) {
+            if (r.inavSuspect) suspectFlags.set(`${r.date}|${r.time}`, 1);
+        }
+
+        const dates = [...new Set(norm.map(r => r.date).filter(Boolean))].sort();
+        return { ok: true, rows: norm.length, dates };
+    } catch (err) {
+        console.warn('[demo] loadAndPopulateDemoData failed:', err.message);
+        return { ok: false, error: err.message };
+    }
 }
 
 function generateRowsWithData(dataRows) {
@@ -701,6 +352,19 @@ function readRows() {
  */
 const FLAT_BAND_PCT = 0.05;  // |premium| < this → "Flat"
 
+// HKT cutoff = KRX 主板收盘 (KST 15:20). After this, two facts hold:
+//   1. KP stops ticking (LOCF freeze takes effect naturally).
+//   2. BBG-published 7709 IV becomes UNRELIABLE — it diverges from the
+//      true post-close fair-value (often −5% to −11% drifts that have no
+//      ETF-side counterpart). Empirically validated across 06-02..06-09:
+//      ETF and our (KT/KP_freeze)-based Theo are well-aligned, but
+//      Published iNAV runs off in random directions.
+//
+// So after KP_CUTOFF we freeze Published at its 14:20 value and let Theo
+// move only via KT relative to KP_freeze. This matches how a desk trader
+// mentally extrapolates fair value once the main board closes.
+const KP_CUTOFF_HKT = '14:20';
+
 function resolveDay(date, rows) {
     if (rows.length === 0) return [];
     const base = rows[0];
@@ -717,6 +381,9 @@ function resolveDay(date, rows) {
 
     // LOCF cursor over KP — captures 14:20 freeze automatically.
     let kpLast = null;
+    // LOCF cursor over Published iNAV at-or-before KP_CUTOFF — used as the
+    // base after main-board close (when raw Published becomes unreliable).
+    let inavFrozen = null;
 
     const out = [];
     for (const row of rows) {
@@ -724,6 +391,11 @@ function resolveDay(date, rows) {
 
         // Update KP LOCF tracker
         if (row.hynixKP != null) kpLast = row.hynixKP;
+        // Update inavFrozen ONLY while we are still in or before the cutoff
+        // window. Past 14:20 we keep the last seen pre-cutoff value.
+        if (row.time && row.time <= KP_CUTOFF_HKT && row.inavPrice != null) {
+            inavFrozen = row.inavPrice;
+        }
 
         const etfLast = row.etfPrice;
         const etfBid = (row.etfBid != null ? row.etfBid : null);
@@ -732,8 +404,14 @@ function resolveDay(date, rows) {
 
         const etfChange = ((etfLast - baseEtf) / baseEtf) * 100;
 
-        // ---- Theoretical iNAV (the single formula, all-day) ----
-        // Need: published iNAV + KT + a sensible KP_ref to compute r.
+        // ---- Theoretical iNAV ----
+        //   - Pre-cutoff:  use the row's live Published iNAV as the base.
+        //   - Post-cutoff: use the 14:20-frozen Published as the base.
+        // KP_ref selection (denominator of r) is unchanged: latest KP tick
+        // observed at-or-before the row, falling back to prevClose / KT.
+        const isPostCutoff = row.time && row.time > KP_CUTOFF_HKT;
+        const inavBase = isPostCutoff ? inavFrozen : row.inavPrice;
+
         let theoInav = null;
         let kpRef = null;
         let kpRefSource = null;
@@ -745,8 +423,8 @@ function resolveDay(date, rows) {
         if (kpRef != null && row.hynixKT != null && kpRef > 0) {
             r = row.hynixKT / kpRef - 1;
         }
-        if (row.inavPrice != null && r != null) {
-            theoInav = row.inavPrice * (1 + LEVERAGE * r);
+        if (inavBase != null && r != null) {
+            theoInav = inavBase * (1 + LEVERAGE * r);
         }
 
         // ---- Diagnostic series (always vs 09:30 baseline) ----

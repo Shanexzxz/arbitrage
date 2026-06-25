@@ -100,6 +100,19 @@ export function runBacktest(data, params) {
     const windowStart = params.windowStart || '13:00';
     const windowEnd   = params.windowEnd   || '15:55';
 
+    // Suspect-row filter. params.suspectFlags is a Map<"date|time", 1>
+    // populated by data-input.js when loading the offline-preprocessed
+    // demo dataset. Rows present in this map carry an iNAV value derived
+    // from a >1% intraday tick jump (BBG NAV re-publish / data patch /
+    // ex-div), which produces phantom premiums that aren't tradable in
+    // practice. When excludeSuspect=true (default), the engine treats
+    // these rows as if they have no premium info: they don't trigger a
+    // swap AND they don't update arm flags (so a real signal right
+    // before/after the suspect window isn't artificially re-armed by
+    // a phantom mean-reversion).
+    const suspectFlags = params.suspectFlags instanceof Map ? params.suspectFlags : null;
+    const excludeSuspect = params.excludeSuspect !== false;
+
     const swaps = [];
     const groups = groupByDate(data);
 
@@ -115,6 +128,11 @@ export function runBacktest(data, params) {
             const globalIndex = startIndex + i;
             const premiumLast = row.premiumLast != null ? row.premiumLast : row.premiumDiscount;
             if (premiumLast == null) continue;
+
+            // Skip suspect rows entirely (no fire, no re-arm).
+            if (excludeSuspect && suspectFlags && suspectFlags.get(`${date}|${row.time}`)) {
+                continue;
+            }
 
             // Re-arm on the visible (Last-based) premium. We still update
             // arm state even outside the trading window so we don't carry a

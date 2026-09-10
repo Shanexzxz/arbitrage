@@ -14,3 +14,6 @@ watchdog.log
 # raw market data dumps (not for git)
 *.xlsx
 *.xls
+
+# Cloudflare Pages build output
+/dist/
